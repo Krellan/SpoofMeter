@@ -1,0 +1,6 @@
+#!/bin/sh
+
+# This script is not necessary yet
+
+echo "The SpoofMeter configure script has completed successfully."
+exit 0

@@ -2,6 +2,36 @@
 
 #include <stdio.h>
 
+// This is the SpoofMeter server.
+// It is designed to be talked to by a SpoofMeter client.
+
+//   Usage: spoofmeter-server <port>
+// Example: spoofmeter-server 12345
+
+// Mandatory command line arguments:
+// <port>: The port number (applies to both TCP and UDP) of this server
+
+// Optional command line arguments:
+// TODO
+
+// Unlike the SpoofMeter client, operation is not sequential.
+// The SpoofMeter server is stateless, and will remain up indefinitely,
+// until manually terminated by the user.
+
+// The given port number will be claimed, for both TCP and UDP.
+// The server will accept incoming TCP connections,
+// and keep them open for as long as the client remains connected.
+// The server will accept incoming UDP packets.
+// Each UDP packet successfully received will be echoed back,
+// to all currently connected TCP clients.
+
+// This operation all runs as a normal user.
+// No root privileges are needed.
+
+
+// TODO: rough implementation details are below here, in comments and pseudocode, and these comments are not intended to be in the final product
+
+
 // TODO: figure out how to bind to a given interface
 // take this as the --interface argument
 // either a number (the interface index ID) or a string is OK here

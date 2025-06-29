@@ -2,6 +2,51 @@
 
 #include <stdio.h>
 
+// This is the SpoofMeter client.
+// It is designed to talk to a SpoofMeter server.
+
+//   Usage: spoofmeter-client <host> <port>
+// Example: spoofmeter-client 127.0.0.1 12345
+
+// Mandatory command line arguments:
+// <host>: The host name (or IP address) of the SpoofMeter server
+// <port>: The port number (applies to both TCP and UDP) of that server
+
+// Optional command line arguments:
+// TODO
+
+// Here's what is done:
+
+// 1) The client will first connect to the SpoofMeter server,
+// using TCP, as a normal user (not root),
+// to verify existence and reachability of the server.
+// The client will then send a UDP packet to the server,
+// also as an unprivileged user,
+// using the same port number as the TCP connection.
+// The server will echo back the contents of the received UDP packet,
+// over the established TCP connection,
+// allowing the client to verify successful reception of the UDP packet.
+
+// 2) After this is proven, more interesting operation begins.
+// Using root privileges, raw UDP packets will be crafted,
+// each with a different spoofed source IP address,
+// and these will also be sent to the SpoofMeter server.
+// The server will echo back these UDP packets similarly, if received,
+// over the originally established TCP connection,
+// allowing the client to verify which packets were successfully received,
+// and which were dropped.
+
+// 3) After a variety of these spoofed UDP packets are sent,
+// the client will then analyze the received results,
+// and print out the spoofability of the source IP address,
+// indicating which bits of the source IP address were successfully spoofed,
+// and how reliable this spoofability appears to be.
+
+
+// TODO: rough implementation details are below here, in comments and pseudocode, and these comments are not intended to be in the final product
+
+
+// Optional command line arguments:
 // TODO: getopt
 
 // TODO: figure out how to open a raw socket

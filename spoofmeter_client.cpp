@@ -219,5 +219,8 @@
 // as well as all other randomness decisions we will be making
 
 int main(int argc, char **argv) {
+	(void)argc;
+	(void)argv;
+	printf("SpoofMeter client hello world!\n");
 	return 0;
 }

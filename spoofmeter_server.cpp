@@ -78,5 +78,8 @@
 // all sockets need to be made nonblocking, including newly spawned sockets from accept()
 
 int main(int argc, char **argv) {
+	(void)argc;
+	(void)argv;
+	printf("SpoofMeter server hello world!\n");
 	return 0;
 }

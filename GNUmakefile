@@ -8,11 +8,14 @@ RM = rm -f
 CC = g++
 LINK = g++
 
+EMPTY =
+SPACE = $(EMPTY) $(EMPTY)
+
 EXE =
 OBJ = .o
 CCONLYARG = -c
-CCOUTARG = "-o "
-LINKOUTARG = "-o "
+CCOUTARG = -o$(SPACE)
+LINKOUTARG = -o$(SPACE)
 
 # FUTURE: Move debug versus release to a flag in configure script
 DEBUG = 1

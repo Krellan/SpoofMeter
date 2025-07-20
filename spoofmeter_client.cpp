@@ -218,9 +218,87 @@
 // and that random seed will be used to set the 8-byte session ID that we will be using
 // as well as all other randomness decisions we will be making
 
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+bool drop_privileges() {
+    uid_t effective_uid = geteuid();
+	gid_t effective_gid = getegid();
+	printf("Current effective UID: %d, GID: %d\n", (int)effective_uid, (int)effective_gid);
+
+	uid_t real_uid = getuid();
+	gid_t real_gid = getgid();
+	printf("Current real UID: %d, GID: %d\n", (int)real_uid, (int)real_gid);
+
+	// If UID already nonzero, we have no root privileges to drop
+	if (effective_uid != 0 && effective_gid != 0)
+	{
+		// This is successful, not an error, as privs were evidently already dropped
+		fprintf(stderr, "Already running as ordinary user, not root!\n");
+		return true;
+	}
+
+	// Special case for recovering real UID/GID when running under sudo
+	if (real_uid == 0) {
+		const char *env_sudo_uid = getenv("SUDO_UID");
+		if (env_sudo_uid != NULL) {
+			real_uid = (uid_t)atoi(env_sudo_uid);
+		}
+	}
+	if (real_gid == 0) {
+		const char *env_sudo_gid = getenv("SUDO_GID");
+		if (env_sudo_gid != NULL) {
+			real_gid = (gid_t)atoi(env_sudo_gid);
+		}
+	}
+	printf("After sudo special case, current real UID: %d, GID: %d\n", (int)real_uid, (int)real_gid);
+
+	// This also catches any errors from atoi() above
+	if (real_uid == 0 || real_gid == 0) {
+		fprintf(stderr, "Unable to determine original non-root user!\n");
+		return false;
+	}
+
+	// Change group before changing user, as non-root user no longer has privs to change group
+	if (effective_gid != real_gid) {
+		if (setgid(real_gid) != 0) {
+			perror("setgid failed");
+			return false;
+		}
+	}
+
+	// Change user, which will drop root privs
+	if (effective_uid != real_uid) {
+		if (setuid(real_uid) != 0) {
+			perror("setuid failed");
+			return false;
+		}
+	}
+
+	// By demonstration, verify we no longer have root privileges
+    if (setuid(0) != -1) {
+        fprintf(stderr, "Still running with root privileges!\n");
+		return false;
+	}
+
+	printf("Successfully dropped root privileges!\n");
+	return true;
+}
+
 int main(int argc, char **argv) {
 	(void)argc;
 	(void)argv;
+
+	// This should be done ASAP, even before option processing
+	if (!drop_privileges()) {
+		fprintf(stderr, "Failed to drop root privileges!\n");
+		fprintf(stderr, "For safety, this program will not continue as root.\n");
+		fprintf(stderr, "Please run as an ordinary user, using sudo or similar wrapper.\n");
+		return 1;
+	}
+
 	printf("SpoofMeter client hello world!\n");
 	return 0;
 }

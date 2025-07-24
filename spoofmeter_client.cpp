@@ -223,6 +223,108 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+static int raw_ipv4_socket = -1;
+static int raw_ipv6_socket = -1;
+
+static int udp_ipv4_socket = -1;
+static int udp_ipv6_socket = -1;
+
+static int tcp_socket = -1;
+
+bool open_raw_sockets() {
+	// Open raw sockets for IPv4 and IPv6
+	// FUTURE: perhaps accept arguments, in case user wants to use only one of these,
+	// but that would require argument processing as root which we are trying to avoid.
+	// FUTURE: we might also need SO_BINDTODEVICE before we lose root privs,
+	// but that would also require getting the interface name from the command line.
+	// TODO: do the privileged setsockopt stuff here also like IP_HDRINCL and IPV6_HDRINCL	
+	raw_ipv4_socket = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
+	if (raw_ipv4_socket < 0) {
+		perror("Failed to open raw IPv4 socket");
+		return false;
+	}
+
+	// TODO: might have to bite the bullet and parse the command line as root
+	// this allow us to take --user name (or UID) as target user to run as
+	// if --user is numeric then use that for the target GID also
+	// this allows us to take --localport (defaults to --port which is mandatory) for UDP
+	// and thus bind to privileged local ports as needed
+	// this allows us to take --interface name to SO_BINDTODEVICE and force a specific interface
+	// the --host is mandatory
+
+	// open UDP ports, both IPv4 and IPv6, locally
+	// these will provide cover for the raw sockets
+	// by telling the kernel that these UDP ports really are in use
+	// this is why we need the UDP port number first
+
+	// if interface name was not explicitly given
+	// do the UDP connect() trick to learn the local IP
+	// and look up the interface table to and find a local IP match
+	// and use that as the device to bind to, if the user did not give --interface
+	// error out if not found a local interface name
+	// because we need to SO_BINDTODEVICE it
+	// otherwise we can not force all future stuff to go out the same interface
+	// when we are changing the source IP address!
+
+	// set IP_HDRINCL for both IPv4 and IPv6
+	// fill in interface name and sendmsg() with it and PACKETINFO (or whatever that option is called)
+	// to ensure all sendings go out the desired interface
+
+	// TODO: --user name has priority if that is given (it can be numeric also)
+	// if it is numeric then use it as both UID and GID
+	// next priority is SUDO_UID and SUDO_GID
+	// both must exist and be numeric and be nonzero
+	// next priority is SUDO_USER which is string
+
+	// if --user name (or SUDO_USER) is a string,
+	// look that up in passwd and get numeric UID and GID from there
+	// error out unless both of these are found and numeric and nonzero
+
+	// TODO: do the 4 operations in that recommended order to drop privs
+	// setgroups()
+	// setgid()
+	// initgroups()
+	// setuid()
+
+	raw_ipv6_socket = socket(AF_INET6, SOCK_RAW, IPPROTO_UDP);
+	if (raw_ipv6_socket < 0) {
+		perror("Failed to open raw IPv6 socket");
+		close(raw_ipv4_socket);
+		return false;
+	}
+
+	// Open UDP sockets for IPv4 and IPv6
+	udp_ipv4_socket = socket(AF_INET, SOCK_DGRAM, 0);
+	if (udp_ipv4_socket < 0) {
+		perror("Failed to open UDP IPv4 socket");
+		close(raw_ipv4_socket);
+		close(raw_ipv6_socket);
+		return false;
+	}
+
+	udp_ipv6_socket = socket(AF_INET6, SOCK_DGRAM, 0);
+	if (udp_ipv6_socket < 0) {
+		perror("Failed to open UDP IPv6 socket");
+		close(raw_ipv4_socket);
+		close(raw_ipv6_socket);
+		close(udp_ipv4_socket);
+		return false;
+	}
+
+	// Open TCP socket
+	tcp_socket = socket(AF_INET, SOCK_STREAM, 0);
+	if (tcp_socket < 0) {
+		perror("Failed to open TCP socket");
+		close(raw_ipv4_socket);
+		close(raw_ipv6_socket);
+		close(udp_ipv4_socket);
+		close(udp_ipv6_socket);
+		return false;
+	}
+
+	return true;
+}
+
 bool drop_privileges() {
     uid_t effective_uid = geteuid();
 	gid_t effective_gid = getegid();
@@ -261,18 +363,22 @@ bool drop_privileges() {
 		return false;
 	}
 
+	// TODO: setgroups() here
+
 	// Change group before changing user, as non-root user no longer has privs to change group
 	if (effective_gid != real_gid) {
 		if (setgid(real_gid) != 0) {
-			perror("setgid failed");
+			perror("Failed to setgid");
 			return false;
 		}
 	}
 
+	// TODO: initgroups() here
+
 	// Change user, which will drop root privs
 	if (effective_uid != real_uid) {
 		if (setuid(real_uid) != 0) {
-			perror("setuid failed");
+			perror("Failed to setuid");
 			return false;
 		}
 	}
@@ -298,6 +404,9 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "Please run as an ordinary user, using sudo or similar wrapper.\n");
 		return 1;
 	}
+
+	// TODO: cleanup global variables here
+	// any fatal error should return here, not exit, so we get a chance to do cleanup no matter what
 
 	printf("SpoofMeter client hello world!\n");
 	return 0;

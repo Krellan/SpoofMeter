@@ -560,6 +560,10 @@ int open_raw_ipv6_socket() {
 		return -1;
 	}
 
+	// TODO: copy from IPv4, including BINDTODEVICE 
+
+	// TODO: add V6ONLY option for this socket
+
 	return fd_raw;
 }
 

@@ -1,6 +1,19 @@
 #include "spoofmeter_common.h"
 
 #include <stdio.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/ioctl.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <string.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
+#include <netinet/ip6.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <ifaddrs.h>
+#include <fcntl.h>
 
 // This is the SpoofMeter server.
 // It is designed to be talked to by a SpoofMeter client.
@@ -77,9 +90,209 @@
 
 // all sockets need to be made nonblocking, including newly spawned sockets from accept()
 
+static int udp_ipv4_socket = -1;
+static int udp_ipv6_socket = -1;
+
+static int tcp_ipv4_listen_socket = -1;
+static int tcp_ipv6_listen_socket = -1;
+
+void close_socket(int *pfd) {
+	int fd = *pfd;
+	if (fd != -1) {
+		close(fd);
+		*pfd = -1;
+	}
+}
+
+void close_sockets() {
+	close_socket(&udp_ipv4_socket);
+	close_socket(&udp_ipv6_socket);
+	close_socket(&tcp_ipv4_listen_socket);
+	close_socket(&tcp_ipv6_listen_socket);
+}
+
+bool become_nonblocking(int fd) {
+	int flags;
+	
+	flags = fcntl(fd, F_GETFL, 0);
+	if (flags == -1) {
+		perror("Failed to get socket flags");
+		return false;
+	}
+
+	flags |= O_NONBLOCK;
+	if (fcntl(fd, F_SETFL, flags) == -1) {
+		perror("Failed to set socket non-blocking");
+		return false;
+	}
+
+	return true;
+}
+
+bool become_reusable(int fd) {
+	int one = 1;
+	socklen_t optlen = sizeof(one);
+
+	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, optlen) != 0) {
+		perror("Failed to set SO_REUSEADDR");
+		return false;
+	}
+
+	if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &one, optlen) != 0) {
+		perror("Failed to set SO_REUSEPORT");
+		return false;
+	}
+
+	return true;
+}
+
+bool become_v6only(int fd) {
+	int one = 1;
+	socklen_t optlen = sizeof(one);
+
+	if (setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &one, optlen) != 0) {
+		perror("Failed to set IPV6_V6ONLY");
+		return false;
+	}
+
+	return true;
+}
+
+// All sockets, TCP and UDP, are at the same port number
+bool open_sockets(uint16_t port) {
+	// Create UDP IPv4 socket
+	udp_ipv4_socket = socket(AF_INET, SOCK_DGRAM, 0);
+	if (udp_ipv4_socket == -1) {
+		perror("Failed to create IPv4 UDP socket");
+		return false;
+	}
+
+	if (!become_nonblocking(udp_ipv4_socket)) {
+		return false;
+	}
+	if (!become_reusable(udp_ipv4_socket)) {
+		return false;
+	}
+
+	struct sockaddr_in addr_v4;
+	memset(&addr_v4, 0, sizeof(addr_v4));
+	addr_v4.sin_family = AF_INET;
+	addr_v4.sin_port = htons(port);
+	addr_v4.sin_addr.s_addr = htonl(INADDR_ANY);
+
+	if (bind(udp_ipv4_socket, (struct sockaddr *)&addr_v4, sizeof(addr_v4)) != 0) {
+		perror("Failed to bind IPv4 UDP socket");
+		return false;
+	}
+	
+	// Create UDP IPv6 socket
+	udp_ipv6_socket = socket(AF_INET6, SOCK_DGRAM, 0);
+	if (udp_ipv6_socket == -1) {
+		perror("Failed to create IPv6 UDP socket");
+		return false;
+	}
+
+	if (!become_nonblocking(udp_ipv6_socket)) {
+		return false;
+	}
+	if (!become_reusable(udp_ipv6_socket)) {
+		return false;
+	}
+
+	// IPv6 needs V6ONLY because we already have a separate socket for IPv4
+	if (!become_v6only(udp_ipv6_socket)) {
+		return false;
+	}
+
+	struct sockaddr_in6 addr_v6;
+	memset(&addr_v6, 0, sizeof(addr_v6));
+	addr_v6.sin6_family = AF_INET6;
+	addr_v6.sin6_port = htons(port);
+	addr_v6.sin6_addr = in6addr_any;
+
+	if (bind(udp_ipv6_socket, (struct sockaddr *)&addr_v6, sizeof(addr_v6)) != 0) {
+		perror("Failed to bind IPv6 UDP socket");
+		return false;
+	}
+
+	// Create TCP IPv4 socket
+	tcp_ipv4_listen_socket = socket(AF_INET, SOCK_STREAM, 0);
+	if (tcp_ipv4_listen_socket < 0) {
+		perror("Failed to create IPv4 TCP socket");
+		return false;
+	}
+
+	if (!become_nonblocking(tcp_ipv4_listen_socket)) {
+		return false;
+	}
+	if (!become_reusable(tcp_ipv4_listen_socket)) {
+		return false;
+	}
+
+	// TCP socket binds to same port as UDP socket
+	if (bind(tcp_ipv4_listen_socket, (struct sockaddr *)&addr_v4, sizeof(addr_v4)) != 0) {
+		perror("Failed to bind IPv4 TCP socket");
+		return false;
+	}
+
+	if (listen(tcp_ipv4_listen_socket, SOMAXCONN) != 0) {
+		perror("Failed to listen on IPv4 TCP socket");
+		return false;
+	}
+
+	// Create TCP IPv6 socket
+	tcp_ipv6_listen_socket = socket(AF_INET6, SOCK_STREAM, 0);
+	if (tcp_ipv6_listen_socket < 0) {
+		perror("Failed to create IPv6 TCP socket");
+		return false;
+	}
+
+	if (!become_nonblocking(tcp_ipv6_listen_socket)) {
+		return false;
+	}
+	if (!become_reusable(tcp_ipv6_listen_socket)) {
+		return false;
+	}
+
+	// IPv6 needs V6ONLY because we already have a separate socket for IPv4
+	if (!become_v6only(tcp_ipv6_listen_socket)) {
+		return false;
+	}
+
+	// TCP socket binds to same port as UDP socket
+	if (bind(tcp_ipv6_listen_socket, (struct sockaddr *)&addr_v6, sizeof(addr_v6)) != 0) {
+		perror("Failed to bind IPv6 TCP socket");
+		return false;
+	}
+
+	if (listen(tcp_ipv6_listen_socket, SOMAXCONN) != 0) {
+		perror("Failed to listen on IPv6 TCP socket");
+		return false;
+	}
+
+	return true;
+}
+
 int main(int argc, char **argv) {
 	(void)argc;
 	(void)argv;
+
+	// TODO: warn if user runs this as root
+
+	// TODO: Get command line arguments
+
+	// port number is mandatory
+	// the others are optional
+	uint16_t port = 12345; // TODO: replace with actual command line argument
+
+	if (!open_sockets(port)) {
+		fprintf(stderr, "Failed to open sockets!\n");
+		return 1;
+	}
+
 	printf("SpoofMeter server hello world!\n");
+
+	close_sockets();
+
 	return 0;
 }

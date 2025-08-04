@@ -11,6 +11,7 @@ LINKFLAGS = $(DEBUGLINKFLAGS)
 # Simply to save a lot of typing
 CLI = spoofmeter_client
 SRV = spoofmeter_server
+COM = spoofmeter_common
 
 all: build
 	echo "The SpoofMeter make process has completed successfully."
@@ -21,20 +22,24 @@ build: spoofmeter
 spoofmeter: $(CLI)$(EXE) $(SRV)$(EXE)
 	echo "The SpoofMeter executables have been built successfully."
 
-$(CLI)$(EXE): $(CLI)$(OBJ)
-	$(LINK) $(LINKFLAGS) $(CLI)$(OBJ) $(LINKOUTARG)$(CLI)$(EXE)
+$(COM)$(OBJ): $(COM).cpp $(COM).h
+	$(CC) $(CCFLAGS) $(CCONLYARG) $(COM).cpp $(CCOUTARG)$(COM)$(OBJ)
 
-$(CLI)$(OBJ): $(CLI).cpp spoofmeter_common.h
+$(CLI)$(OBJ): $(CLI).cpp $(COM).h
 	$(CC) $(CCFLAGS) $(CCONLYARG) $(CLI).cpp $(CCOUTARG)$(CLI)$(OBJ)
 
-$(SRV)$(EXE): $(SRV)$(OBJ)
-	$(LINK) $(LINKFLAGS) $(SRV)$(OBJ) $(LINKOUTARG)$(SRV)$(EXE)
+$(CLI)$(EXE): $(CLI)$(OBJ) $(COM)$(OBJ)
+	$(LINK) $(LINKFLAGS) $(CLI)$(OBJ) $(COM)$(OBJ) $(LINKOUTARG)$(CLI)$(EXE)
 
-$(SRV)$(OBJ): $(SRV).cpp spoofmeter_common.h
+$(SRV)$(OBJ): $(SRV).cpp $(COM).h
 	$(CC) $(CCFLAGS) $(CCONLYARG) $(SRV).cpp $(CCOUTARG)$(SRV)$(OBJ)
+
+$(SRV)$(EXE): $(SRV)$(OBJ) $(COM)$(OBJ)
+	$(LINK) $(LINKFLAGS) $(SRV)$(OBJ) $(COM)$(OBJ) $(LINKOUTARG)$(SRV)$(EXE)
 
 # The "-" is necessary because Microsoft DEL has no equivalent to -f ignore errors
 clean:
+	-$(RM) $(COM)$(OBJ)
 	-$(RM) $(CLI)$(EXE)
 	-$(RM) $(CLI)$(OBJ)
 	-$(RM) $(SRV)$(EXE)

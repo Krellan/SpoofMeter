@@ -254,30 +254,11 @@ static int tcp_socket = -1;
 // TODO: stuff learned from sockets
 
 void close_sockets() {
-	if (tcp_socket != -1) {
-		close(tcp_socket);
-		tcp_socket = -1;
-	}
-
-	if (udp_ipv4_socket != -1) {
-		close(udp_ipv4_socket);
-		udp_ipv4_socket = -1;
-	}
-
-	if (udp_ipv6_socket != -1) {
-		close(udp_ipv6_socket);
-		udp_ipv6_socket = -1;
-	}
-
-	if (raw_ipv4_socket != -1) {
-		close(raw_ipv4_socket);
-		raw_ipv4_socket = -1;
-	}
-
-	if (raw_ipv6_socket != -1) {
-		close(raw_ipv6_socket);
-		raw_ipv6_socket = -1;
-	}
+	fd_close_ptr(&tcp_socket);
+	fd_close_ptr(&udp_ipv4_socket);
+	fd_close_ptr(&udp_ipv6_socket);
+	fd_close_ptr(&raw_ipv4_socket);
+	fd_close_ptr(&raw_ipv6_socket);
 }
 
 std::string sockaddr_to_string(struct sockaddr *addr) {

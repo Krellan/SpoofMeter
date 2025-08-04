@@ -96,40 +96,14 @@ static int udp_ipv6_socket = -1;
 static int tcp_ipv4_listen_socket = -1;
 static int tcp_ipv6_listen_socket = -1;
 
-void close_socket(int *pfd) {
-	int fd = *pfd;
-	if (fd != -1) {
-		close(fd);
-		*pfd = -1;
-	}
-}
-
 void close_sockets() {
-	close_socket(&udp_ipv4_socket);
-	close_socket(&udp_ipv6_socket);
-	close_socket(&tcp_ipv4_listen_socket);
-	close_socket(&tcp_ipv6_listen_socket);
+	fd_close_ptr(&udp_ipv4_socket);
+	fd_close_ptr(&udp_ipv6_socket);
+	fd_close_ptr(&tcp_ipv4_listen_socket);
+	fd_close_ptr(&tcp_ipv6_listen_socket);
 }
 
-bool become_nonblocking(int fd) {
-	int flags;
-	
-	flags = fcntl(fd, F_GETFL, 0);
-	if (flags == -1) {
-		perror("Failed to get socket flags");
-		return false;
-	}
-
-	flags |= O_NONBLOCK;
-	if (fcntl(fd, F_SETFL, flags) == -1) {
-		perror("Failed to set socket non-blocking");
-		return false;
-	}
-
-	return true;
-}
-
-bool become_reusable(int fd) {
+bool socket_become_reusable(int fd) {
 	int one = 1;
 	socklen_t optlen = sizeof(one);
 
@@ -146,7 +120,7 @@ bool become_reusable(int fd) {
 	return true;
 }
 
-bool become_v6only(int fd) {
+bool socket_become_v6only(int fd) {
 	int one = 1;
 	socklen_t optlen = sizeof(one);
 
@@ -167,10 +141,10 @@ bool open_sockets(uint16_t port) {
 		return false;
 	}
 
-	if (!become_nonblocking(udp_ipv4_socket)) {
+	if (!fd_become_nonblocking(udp_ipv4_socket)) {
 		return false;
 	}
-	if (!become_reusable(udp_ipv4_socket)) {
+	if (!socket_become_reusable(udp_ipv4_socket)) {
 		return false;
 	}
 
@@ -192,15 +166,15 @@ bool open_sockets(uint16_t port) {
 		return false;
 	}
 
-	if (!become_nonblocking(udp_ipv6_socket)) {
+	if (!fd_become_nonblocking(udp_ipv6_socket)) {
 		return false;
 	}
-	if (!become_reusable(udp_ipv6_socket)) {
+	if (!socket_become_reusable(udp_ipv6_socket)) {
 		return false;
 	}
 
 	// IPv6 needs V6ONLY because we already have a separate socket for IPv4
-	if (!become_v6only(udp_ipv6_socket)) {
+	if (!socket_become_v6only(udp_ipv6_socket)) {
 		return false;
 	}
 
@@ -222,10 +196,10 @@ bool open_sockets(uint16_t port) {
 		return false;
 	}
 
-	if (!become_nonblocking(tcp_ipv4_listen_socket)) {
+	if (!fd_become_nonblocking(tcp_ipv4_listen_socket)) {
 		return false;
 	}
-	if (!become_reusable(tcp_ipv4_listen_socket)) {
+	if (!socket_become_reusable(tcp_ipv4_listen_socket)) {
 		return false;
 	}
 
@@ -247,15 +221,15 @@ bool open_sockets(uint16_t port) {
 		return false;
 	}
 
-	if (!become_nonblocking(tcp_ipv6_listen_socket)) {
+	if (!fd_become_nonblocking(tcp_ipv6_listen_socket)) {
 		return false;
 	}
-	if (!become_reusable(tcp_ipv6_listen_socket)) {
+	if (!socket_become_reusable(tcp_ipv6_listen_socket)) {
 		return false;
 	}
 
 	// IPv6 needs V6ONLY because we already have a separate socket for IPv4
-	if (!become_v6only(tcp_ipv6_listen_socket)) {
+	if (!socket_become_v6only(tcp_ipv6_listen_socket)) {
 		return false;
 	}
 
@@ -269,6 +243,9 @@ bool open_sockets(uint16_t port) {
 		perror("Failed to listen on IPv6 TCP socket");
 		return false;
 	}
+
+	printf("Successfully bound IPv4: %s\n", sockaddr_to_string((struct sockaddr *)&addr_v4).c_str());
+	printf("Successfully bound IPv6: %s\n", sockaddr_to_string((struct sockaddr *)&addr_v6).c_str());
 
 	return true;
 }

@@ -3,6 +3,9 @@ spoofmeter_server
 spoofmeter_client.exe
 spoofmeter_server.exe
 
+spoofmeter_common.o
+spoofmeter_common.obj
+
 spoofmeter_client.o
 spoofmeter_server.o
 spoofmeter_client.obj

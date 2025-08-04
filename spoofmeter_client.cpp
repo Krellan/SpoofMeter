@@ -261,63 +261,6 @@ void close_sockets() {
 	fd_close_ptr(&raw_ipv6_socket);
 }
 
-std::string sockaddr_to_string(struct sockaddr *addr) {
-	sa_family_t family = addr->sa_family;
-	socklen_t addrlen;
-
-	char hostbuf[NI_MAXHOST + 1];
-	char servbuf[NI_MAXSERV + 1];
-
-	switch(family) {
-		case AF_INET:
-			addrlen = sizeof(struct sockaddr_in);
-			break;
-
-		case AF_INET6:
-			addrlen = sizeof(struct sockaddr_in6);
-			break;
-		
-		default:
-			fprintf(stderr, "Unsupported address family: %d\n", (int)family);
-			return std::string();
-	}
-
-	int result;
-	int flags = NI_NUMERICHOST | NI_NUMERICSERV;
-
-	// Make sure NUL-terminated even at max length
-	hostbuf[NI_MAXHOST] = '\0';
-	servbuf[NI_MAXSERV] = '\0';
-
-	result = getnameinfo(addr, addrlen, hostbuf, NI_MAXHOST, servbuf, NI_MAXSERV, flags);
-	if (result != 0)
-	{
-		// Compensate for getnameinfo() using its own error namespace above errno
-		if (result == EAI_SYSTEM) {
-			// Fall through to errno
-			perror("Failed getnameinfo");
-		} else {
-			fprintf(stderr, "Failed getnameinfo: %s\n", gai_strerror(result));
-		}
-		return std::string();
-	}
-
-	switch(family) {
-		case AF_INET:
-			return std::string(hostbuf) + ":" + std::string(servbuf);
-
-		case AF_INET6:
-			return std::string("[") + std::string(hostbuf) + std::string("]:") + std::string(servbuf);
-
-		default:
-			break;
-	}
-
-	// This was already checked above and should not happen here
-	fprintf(stderr, "Unsupported address family: %d\n", (int)family);
-	return std::string();
-}
-
 // Using struct sockaddr so it works for both IPv4 and IPv6
 std::string local_ip_to_interface_name(struct sockaddr *local_sockaddr) {
 	sa_family_t family = local_sockaddr->sa_family;

@@ -1,20 +1,5 @@
 #include "spoofmeter_common.h"
 
-#include <stdio.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <sys/ioctl.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <string.h>
-#include <netinet/in.h>
-#include <netinet/ip.h>
-#include <netinet/ip6.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <ifaddrs.h>
-#include <fcntl.h>
-
 // This is the SpoofMeter server.
 // It is designed to be talked to by a SpoofMeter client.
 
@@ -254,6 +239,11 @@ int main(int argc, char **argv) {
 	(void)argc;
 	(void)argv;
 
+	if (!sockets_init()) {
+		fprintf(stderr, "Failed to initialize sockets!\n");
+		return 1;
+	}
+
 	// TODO: warn if user runs this as root
 
 	// TODO: Get command line arguments
@@ -264,12 +254,14 @@ int main(int argc, char **argv) {
 
 	if (!open_sockets(port)) {
 		fprintf(stderr, "Failed to open sockets!\n");
-		return 1;
+		return 2;
 	}
 
 	printf("SpoofMeter server hello world!\n");
 
 	close_sockets();
 
+	sockets_cleanup();
+	
 	return 0;
 }

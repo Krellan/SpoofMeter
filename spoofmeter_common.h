@@ -4,14 +4,29 @@
 // This is the common header file for SpoofMeter,
 // shared between both the client and the server.
 
+// Exactly 16 bytes in length
+#define SPOOFMETER_GREETING "SpoofMeter 1.0\r\n"
+
+// TODO: greeting for each incoming TCP connection
+// TODO: echo back for each UDP packet successfully received
+
+// The following are general utilities,
+// not necessarily specific to SpoofMeter.
+
 #include <cstring>
 #include <string>
 
 // Deal with Windows differences
 #ifdef _WIN32
     // Windows
+    #include <windows.h>
     #include <winsock2.h>
     #include <ws2tcpip.h>
+    #include <iphlpapi.h>
+
+    #ifndef sa_family_t
+        typedef ADDRESS_FAMILY sa_family_t;
+    #endif
 #else
     // POSIX (Linux, macOS, etc.)
     #include <sys/types.h>
@@ -24,13 +39,12 @@
     #include <arpa/inet.h>
 #endif
 
-// Exactly 16 bytes in length
-#define SPOOFMETER_GREETING "SpoofMeter 1.0\r\n"
-
-// TODO: greeting for each incoming TCP connection
-// TODO: echo back for each UDP packet successfully received
-
 // Useful utility functions
+
+// These should be called first and last in your program
+// These are no-op on Linux
+bool sockets_init();
+void sockets_cleanup();
 
 // Closes a file descriptor, if not already -1, and sets it to -1
 void fd_close_ptr(/*INOUT*/ int *pfd);

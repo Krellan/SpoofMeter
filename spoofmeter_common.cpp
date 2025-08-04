@@ -2,9 +2,50 @@
 
 #include <stdio.h>
 #include <fcntl.h>
-#include <unistd.h>
-#include <netdb.h>
-#include <netinet/in.h>
+
+bool sockets_init() {
+#ifdef _WIN32
+	WSADATA wsaData;
+	uint8_t byHiExp = 2;
+	uint8_t byLoExp = 2;
+
+	// Winsock 2.2 is the standard version number these days
+	if (WSAStartup(MAKEWORD(byHiExp, byLoExp), &wsaData) != 0) {
+		// Initialization failed
+		fprintf(stderr, "Failed to initialize Winsock: %d\n",
+			WSAGetLastError()
+		);
+		
+		return false;
+	}
+
+	uint8_t byHiRec = HIBYTE(wsaData.wVersion);
+	uint8_t byLoRec = LOBYTE(wsaData.wVersion);
+	if ((byHiRec != byHiExp) || (byLoRec != byLoExp)) {
+		fprintf(stderr, "Winsock incompatible! Version expected %u.%u received %u.%u\n",
+			(unsigned int)byHiExp, (unsigned int)byLoExp,
+			(unsigned int)byHiRec, (unsigned int)byLoRec
+		);
+		
+		return false;
+	}
+
+	printf("Winsock initialized: version %u.%u\n",
+		(unsigned int)byHiRec, (unsigned int)byLoRec
+	);
+	
+	return true;
+#else
+	// As Linux is more reliable than Windows, network initialization will always succeed
+	return true;
+#endif
+}
+
+void sockets_cleanup() {
+#ifdef _WIN32
+	WSACleanup();
+#endif
+}
 
 void fd_close_ptr(/*INOUT*/ int *pfd) {
 	int fd = *pfd;

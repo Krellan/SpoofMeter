@@ -216,29 +216,6 @@
 // and that random seed will be used to set the 8-byte session ID that we will be using
 // as well as all other randomness decisions we will be making
 
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <time.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netinet/ip.h>
-#include <netinet/ip6.h>
-#include <netinet/tcp.h>
-#include <netinet/udp.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <ifaddrs.h>
-#include <fcntl.h>
-#include <pwd.h>
-#include <grp.h>
-
-#include <string>
-#include <vector>
-
 static int raw_ipv4_socket = -1;
 static int raw_ipv6_socket = -1;
 
@@ -695,6 +672,11 @@ int main(int argc, char **argv) {
 	(void)argc;
 	(void)argv;
 
+	if (!sockets_init()) {
+		fprintf(stderr, "Failed to initialize sockets!\n");
+		return 1;
+	}
+
 	// This must be done as root
 	if (!open_raw_sockets()) {
 		fprintf(stderr, "Failed to open raw sockets!\n");
@@ -706,14 +688,16 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "Failed to drop root privileges!\n");
 		fprintf(stderr, "For safety, this program will not continue as root.\n");
 		fprintf(stderr, "Please run as an ordinary user, using sudo or similar wrapper.\n");
-		return 1;
+		return 3;
 	}
+	
+	printf("SpoofMeter client hello world!\n");
 
 	close_sockets();
 
+	sockets_cleanup();
+
 	// TODO: cleanup global variables here
 	// any fatal error should return here, not exit, so we get a chance to do cleanup no matter what
-	
-	printf("SpoofMeter client hello world!\n");
 	return 0;
 }

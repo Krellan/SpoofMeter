@@ -75,46 +75,17 @@
 
 // all sockets need to be made nonblocking, including newly spawned sockets from accept()
 
-static int udp_ipv4_socket = -1;
-static int udp_ipv6_socket = -1;
+static socket_t udp_ipv4_socket = (socket_t)-1;
+static socket_t udp_ipv6_socket = (socket_t)-1;
 
-static int tcp_ipv4_listen_socket = -1;
-static int tcp_ipv6_listen_socket = -1;
+static socket_t tcp_ipv4_listen_socket = (socket_t)-1;
+static socket_t tcp_ipv6_listen_socket = (socket_t)-1;
 
 void close_sockets() {
-	fd_close_ptr(&udp_ipv4_socket);
-	fd_close_ptr(&udp_ipv6_socket);
-	fd_close_ptr(&tcp_ipv4_listen_socket);
-	fd_close_ptr(&tcp_ipv6_listen_socket);
-}
-
-bool socket_become_reusable(int fd) {
-	int one = 1;
-	socklen_t optlen = sizeof(one);
-
-	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, optlen) != 0) {
-		perror("Failed to set SO_REUSEADDR");
-		return false;
-	}
-
-	if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &one, optlen) != 0) {
-		perror("Failed to set SO_REUSEPORT");
-		return false;
-	}
-
-	return true;
-}
-
-bool socket_become_v6only(int fd) {
-	int one = 1;
-	socklen_t optlen = sizeof(one);
-
-	if (setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &one, optlen) != 0) {
-		perror("Failed to set IPV6_V6ONLY");
-		return false;
-	}
-
-	return true;
+	socket_close_ptr(&udp_ipv4_socket);
+	socket_close_ptr(&udp_ipv6_socket);
+	socket_close_ptr(&tcp_ipv4_listen_socket);
+	socket_close_ptr(&tcp_ipv6_listen_socket);
 }
 
 // All sockets, TCP and UDP, are at the same port number
@@ -126,7 +97,7 @@ bool open_sockets(uint16_t port) {
 		return false;
 	}
 
-	if (!fd_become_nonblocking(udp_ipv4_socket)) {
+	if (!socket_become_nonblocking(udp_ipv4_socket)) {
 		return false;
 	}
 	if (!socket_become_reusable(udp_ipv4_socket)) {
@@ -151,7 +122,7 @@ bool open_sockets(uint16_t port) {
 		return false;
 	}
 
-	if (!fd_become_nonblocking(udp_ipv6_socket)) {
+	if (!socket_become_nonblocking(udp_ipv6_socket)) {
 		return false;
 	}
 	if (!socket_become_reusable(udp_ipv6_socket)) {
@@ -181,7 +152,7 @@ bool open_sockets(uint16_t port) {
 		return false;
 	}
 
-	if (!fd_become_nonblocking(tcp_ipv4_listen_socket)) {
+	if (!socket_become_nonblocking(tcp_ipv4_listen_socket)) {
 		return false;
 	}
 	if (!socket_become_reusable(tcp_ipv4_listen_socket)) {
@@ -206,7 +177,7 @@ bool open_sockets(uint16_t port) {
 		return false;
 	}
 
-	if (!fd_become_nonblocking(tcp_ipv6_listen_socket)) {
+	if (!socket_become_nonblocking(tcp_ipv6_listen_socket)) {
 		return false;
 	}
 	if (!socket_become_reusable(tcp_ipv6_listen_socket)) {

@@ -47,37 +47,96 @@ void sockets_cleanup() {
 #endif
 }
 
-void fd_close_ptr(/*INOUT*/ int *pfd) {
-	int fd = *pfd;
-	
-    // If fd is already -1, this function harmlessly does nothing
-	if (fd != -1) {
+bool socket_close(socket_t socket) {
+	int result;
 
-		if (close(fd) != 0) {
-            // Just a warning, as we are closing anyway
-            // and there is not much we can do about it.
-            // This should not normally happen.
-            perror("Failed to close file descriptor");
-        }
+#ifdef _WIN32
+	result = closesocket(socket);
+#else
+	result = close(socket);
+#endif
 
-		*pfd = -1;
+	if (result != 0) {
+		// Just a warning, as we are closing anyway
+		// and there is not much we can do about it.
+		perror("Failed to close socket");
+
+		return false;
 	}
+
+	return true;
 }
 
-bool fd_become_nonblocking(int fd) {
+bool socket_close_ptr(/*INOUT*/ socket_t *pSocket) {
+	socket_t socket = *pSocket;
+
+    // If socket is already -1, harmlessly do nothing successfully
+	if (socket == (socket_t)-1) {
+		return true;
+	}
+	
+	bool result = socket_close(socket);
+	
+	*pSocket = (socket_t)-1;
+
+	return result;
+}
+
+bool socket_become_nonblocking(socket_t fd) {
+#ifdef _WIN32
+	// Windows uses ioctlsocket() instead of fcntl()
+	u_long mode = 1; // 1 = non-blocking, 0 = blocking
+
+	if (ioctlsocket(fd, FIONBIO, &mode) != 0) {
+		fprintf(stderr, "Failed to set socket to non-blocking: %d\n", WSAGetLastError());
+		return false;
+	}
+#else
 	int flags;
 	
 	flags = fcntl(fd, F_GETFL, 0);
 	if (flags == -1) {
 		perror("Failed to get file descriptor flags");
-
 		return false;
 	}
 
 	flags |= O_NONBLOCK;
 	if (fcntl(fd, F_SETFL, flags) == -1) {
 		perror("Failed to set file descriptor to non-blocking");
+		return false;
+	}
+#endif
 
+	return true;
+}
+
+bool socket_become_reusable(socket_t fd) {
+	int one = 1;
+	socklen_t optlen = sizeof(one);
+
+	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&one, optlen) != 0) {
+		perror("Failed to set SO_REUSEADDR");
+		return false;
+	}
+
+#ifndef _WIN32
+	// SO_REUSEPORT not available and not needed on Windows
+	// Windows SO_REUSEADDR is more permissive and already does this too
+	if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, (const char *)&one, optlen) != 0) {
+		perror("Failed to set SO_REUSEPORT");
+		return false;
+	}
+#endif
+
+	return true;
+}
+
+bool socket_become_v6only(socket_t fd) {
+	int one = 1;
+	socklen_t optlen = sizeof(one);
+
+	if (setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, (const char *)&one, optlen) != 0) {
+		perror("Failed to set IPV6_V6ONLY");
 		return false;
 	}
 
@@ -116,6 +175,9 @@ std::string sockaddr_to_string(const struct sockaddr *addr) {
 	result = getnameinfo(addr, addrlen, hostbuf, NI_MAXHOST, servbuf, NI_MAXSERV, flags);
 	if (result != 0)
 	{
+#ifdef _WIN32
+		fprintf(stderr, "Failed getnameinfo: %d\n", WSAGetLastError());
+#else
 		// Compensate for getnameinfo() using its own error namespace above errno
 		if (result == EAI_SYSTEM) {
 			// Fall through to errno
@@ -123,6 +185,7 @@ std::string sockaddr_to_string(const struct sockaddr *addr) {
 		} else {
 			fprintf(stderr, "Failed getnameinfo: %s\n", gai_strerror(result));
 		}
+#endif
 
         return std::string();
 	}
@@ -142,4 +205,123 @@ std::string sockaddr_to_string(const struct sockaddr *addr) {
 	fprintf(stderr, "Unsupported address family: %d\n", (int)family);
 
     return std::string();
+}
+
+// Using struct sockaddr so it works for both IPv4 and IPv6
+std::string sockaddr_to_interface_name(const struct sockaddr *addr, /*OUT*/ int *ifindex) {
+	std::string result;
+
+	// Initialize output parameter
+	*ifindex = -1;
+
+	sa_family_t family = addr->sa_family;
+
+	if (family != AF_INET && family != AF_INET6) {
+		fprintf(stderr, "Unsupported address family: %d\n", (int)family);
+		return std::string();
+	}
+
+	printf("Looking up interface of IP address: %s\n", sockaddr_to_string(addr).c_str());
+#ifdef _WIN32
+	ULONG bufferSize = 0;
+	PIP_ADAPTER_ADDRESSES pAdapters = NULL;
+	ULONG flags = GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER;
+
+	// First call to get the required buffer size
+	if (GetAdaptersAddresses(family, flags, NULL, pAdapters, &bufferSize) != ERROR_BUFFER_OVERFLOW) {
+		fprintf(stderr, "Failed to get adapter addresses: %u\n", (unsigned int)GetLastError());
+		return std::string();
+	}
+
+	pAdapters = (PIP_ADAPTER_ADDRESSES)malloc(bufferSize);
+	if (pAdapters == NULL) {
+		perror("Failed to allocate memory");
+		return std::string();
+	}
+
+	if (GetAdaptersAddresses(family, flags, NULL, pAdapters, &bufferSize) != ERROR_SUCCESS) {
+		free(pAdapters);
+		fprintf(stderr, "Failed to get adapter addresses: %u\n", (unsigned int)GetLastError());
+		return std::string();
+	}
+
+	// TODO: walk through it, that's the fun part
+	// Do not forget IfIndex versus Ipv6IfIndex
+
+	free(pAdapters);
+#else
+	// Linux uses getifaddrs()
+	struct ifaddrs *if_list = NULL;
+	if (getifaddrs(&if_list) != 0) {
+		perror("Failed to get interface addresses");
+		return std::string();
+	}
+	if (if_list == NULL) {
+		fprintf(stderr, "Failed to get interface addresses!\n");
+		return std::string();
+	}
+
+	// At this point, we are now responsible for freeing the ifaddrs list
+	std::string result;
+
+	// Walk through the list
+	for(struct ifaddrs *if_iter = if_list; if_iter != NULL; if_iter = if_iter->ifa_next) {
+		// Skip over interfaces that have no local address
+		if (if_iter->ifa_addr == NULL) {
+			continue;
+		}
+
+		printf("Considering interface %s: family %d\n", if_iter->ifa_name, (int)if_iter->ifa_addr->sa_family);
+
+		// Skip over interfaces that are not the right family
+		if (if_iter->ifa_addr->sa_family != family) {
+			continue;
+		}
+
+		printf("Considering interface %s: address %s\n", if_iter->ifa_name, sockaddr_to_string(addr).c_str());
+
+		bool match = false;
+
+		// Compare only the address field, ignore everything else
+		// In particular, Linux bug, the port number is uninitialized garbage
+		if (family == AF_INET) {
+			struct sockaddr_in *local_addr = (struct sockaddr_in *)addr;
+			struct sockaddr_in *iter_addr = (struct sockaddr_in *)if_iter->ifa_addr;
+			if (memcmp(&local_addr->sin_addr, &iter_addr->sin_addr, sizeof(struct in_addr)) == 0) {
+				match = true;
+			}
+		}
+
+		if (family == AF_INET6) {
+			struct sockaddr_in6 *local_addr = (struct sockaddr_in6 *)addr;
+			struct sockaddr_in6 *iter_addr = (struct sockaddr_in6 *)if_iter->ifa_addr;
+			if (memcmp(&local_addr->sin6_addr, &iter_addr->sin6_addr, sizeof(struct in6_addr)) == 0) {
+				match = true;
+			}
+		}
+
+		if (match) {
+			result = if_iter->ifa_name;
+			
+			unsigned int index = if_nametoindex(result.c_str());
+
+			// 0 indicates error here, so if this happens leave output at -1
+			if (index != 0) {
+				*ifindex = (int)index;
+			}
+
+			printf("Match! %s (index %u)\n", result.c_str(), index);
+			break;
+		}
+	}
+
+	freeifaddrs(if_list);
+#endif
+
+	printf("IP address %s matched to interface %s (index %d)\n",
+		sockaddr_to_string(addr).c_str(),
+		result.c_str(),
+		*ifindex
+	);
+	return result;
 }

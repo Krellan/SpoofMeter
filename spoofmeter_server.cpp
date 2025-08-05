@@ -92,7 +92,7 @@ void close_sockets() {
 bool open_sockets(uint16_t port) {
 	// Create UDP IPv4 socket
 	udp_ipv4_socket = socket(AF_INET, SOCK_DGRAM, 0);
-	if (udp_ipv4_socket == -1) {
+	if (udp_ipv4_socket == (socket_t)-1) {
 		perror("Failed to create IPv4 UDP socket");
 		return false;
 	}
@@ -104,6 +104,7 @@ bool open_sockets(uint16_t port) {
 		return false;
 	}
 
+	// TODO: do what was done in the client, there is more that needs to be done here
 	struct sockaddr_in addr_v4;
 	memset(&addr_v4, 0, sizeof(addr_v4));
 	addr_v4.sin_family = AF_INET;
@@ -117,7 +118,7 @@ bool open_sockets(uint16_t port) {
 	
 	// Create UDP IPv6 socket
 	udp_ipv6_socket = socket(AF_INET6, SOCK_DGRAM, 0);
-	if (udp_ipv6_socket == -1) {
+	if (udp_ipv6_socket == (socket_t)-1) {
 		perror("Failed to create IPv6 UDP socket");
 		return false;
 	}
@@ -147,7 +148,7 @@ bool open_sockets(uint16_t port) {
 
 	// Create TCP IPv4 socket
 	tcp_ipv4_listen_socket = socket(AF_INET, SOCK_STREAM, 0);
-	if (tcp_ipv4_listen_socket < 0) {
+	if (tcp_ipv4_listen_socket == (socket_t)-1) {
 		perror("Failed to create IPv4 TCP socket");
 		return false;
 	}
@@ -172,7 +173,7 @@ bool open_sockets(uint16_t port) {
 
 	// Create TCP IPv6 socket
 	tcp_ipv6_listen_socket = socket(AF_INET6, SOCK_STREAM, 0);
-	if (tcp_ipv6_listen_socket < 0) {
+	if (tcp_ipv6_listen_socket == (socket_t)-1) {
 		perror("Failed to create IPv6 TCP socket");
 		return false;
 	}

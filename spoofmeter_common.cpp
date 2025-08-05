@@ -52,7 +52,7 @@ void sockets_cleanup() {
 
 void socket_error(const std::string& msg) {
 #ifdef _WIN32
-	DWORD dwCode = WSAGetLastError();
+	DWORD dwCode = (DWORD)WSAGetLastError();
 	
 	// If no Winsock error, fall back to general Windows GetLastError()
 	if (dwCode == ERROR_SUCCESS) {
@@ -203,6 +203,7 @@ bool socket_raw_set_hdrincl(socket_t socket) {
 	socklen_t len = sizeof(one);
 
 	// As we do not know the socket address family, try them both
+	// TODO: this might not work on Windows, need to pass in the family
 	result_v4 = setsockopt(socket, IPPROTO_IP, IP_HDRINCL, (const char *)&one, len);
 	result_v6 = setsockopt(socket, IPPROTO_IPV6, IPV6_HDRINCL, (const char *)&one, len);
 	
@@ -226,6 +227,7 @@ bool socket_raw_bind_to_interface(socket_t socket, int ifindex) {
 	socklen_t len = sizeof(dwIfIndex);
 
 	// As we do not know the socket address family, try them both
+	// TODO: this might not work on Windows, need to pass in the family
 	result_v4 = setsockopt(socket, IPPROTO_IP, IP_UNICAST_IF, (const char *)&dwIfIndex, len);
 	result_v6 = setsockopt(socket, IPPROTO_IPV6, IPV6_UNICAST_IF, (const char *)&dwIfIndex, len);
 

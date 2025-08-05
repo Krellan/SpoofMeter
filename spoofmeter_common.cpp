@@ -196,51 +196,78 @@ bool socket_become_v6only(socket_t fd) {
 	return true;
 }
 
-bool socket_raw_set_hdrincl(socket_t socket) {
-	int result_v4;
-	int result_v6;
+bool socket_raw_set_hdrincl(socket_t socket, sa_family_t family) {
+	int opt_level;
+	int opt_name;
+
+	if (family == AF_INET) {
+		opt_level = IPPROTO_IP;
+		opt_name = IP_HDRINCL;
+	}
+	else if (family == AF_INET6) {
+		opt_level = IPPROTO_IPV6;
+		opt_name = IPV6_HDRINCL;
+	}
+	else {
+		fprintf(stderr, "Unsupported address family for raw socket: %d\n", (int)family);
+		return false;
+	}
+
 	int one = 1;
 	socklen_t len = sizeof(one);
 
-	// As we do not know the socket address family, try them both
-	// TODO: this might not work on Windows, need to pass in the family
-	result_v4 = setsockopt(socket, IPPROTO_IP, IP_HDRINCL, (const char *)&one, len);
-	result_v6 = setsockopt(socket, IPPROTO_IPV6, IPV6_HDRINCL, (const char *)&one, len);
-	
-	// Both must succeed, in order to be considered successful
-	if (result_v4 == 0 && result_v6 == 0) {
+	if (setsockopt(socket, opt_level, opt_name, (const char *)&one, len) == 0) {
 		return true;
 	}
 
-	socket_error("Failed to set IP_HDRINCL");
+	socket_error("Failed to set IP_HDRINCL option");
 	return false;
 }
 
-bool socket_raw_bind_to_interface(socket_t socket, int ifindex) {
+bool socket_raw_bind_to_interface(socket_t socket, sa_family_t family, int ifindex) {
 #ifdef _WIN32
 	// Windows takes the interface index, not name,
-	// and it is at IP level, not SOL_SOCKET,
+	// and it is at IP level, not SOL_SOCKET, so it cares what family it is,
 	// and it applies only to unicast (which is good enough for us).
-	int result_v4;
-	int result_v6;
-	DWORD dwIfIndex = (DWORD)ifindex;
+	int opt_level;
+	int opt_name;
+
+	if (family == AF_INET) {
+		opt_level = IPPROTO_IP;
+		opt_name = IP_UNICAST_IF;
+	}
+	else if (family == AF_INET6) {
+		opt_level = IPPROTO_IPV6;
+		opt_name = IPV6_UNICAST_IF;
+	}
+	else {
+		fprintf(stderr, "Unsupported address family for raw socket: %d\n", (int)family);
+		return false;
+	}
+
+	// Windows requires the interface index in network byte order,
+	// if it is IPv4, but host byte order if it is IPv6!
+	u_long ulIfIndex = (u_long)ifindex;
+	DWORD dwIfIndex;
+	if (family == AF_INET) {
+		dwIfIndex = htonl(ulIfIndex);
+	} else {
+		dwIfIndex = ulIfIndex;
+	}
 	socklen_t len = sizeof(dwIfIndex);
 
-	// As we do not know the socket address family, try them both
-	// TODO: this might not work on Windows, need to pass in the family
-	result_v4 = setsockopt(socket, IPPROTO_IP, IP_UNICAST_IF, (const char *)&dwIfIndex, len);
-	result_v6 = setsockopt(socket, IPPROTO_IPV6, IPV6_UNICAST_IF, (const char *)&dwIfIndex, len);
-
-	// Both must succeed, in order to be considered successful
-	if (result_v4 == 0 && result_v6 == 0) {
+	if (setsockopt(socket, opt_level, opt_name, (const char *)&dwIfIndex, len) == 0) {
 		return true;
 	}
 
-	socket_error("Failed to set IP_UNICAST_IF");
+	socket_error("Failed to set IP_UNICAST_IF option");
 #else
 	char namebuf[IF_NAMESIZE + 1];
 
-	// Linux uses SO_BINDTODEVICE, which takes device name instead
+	// Linux does not require address family in order to bind to device
+	(void)family;
+
+	// Linux uses SO_BINDTODEVICE, which takes device name, not index
 	if (if_indextoname(ifindex, namebuf) == NULL) {
 		socket_error("Failed to look up interface name");
 		return false;

@@ -422,11 +422,6 @@ socket_t open_raw_socket(sa_family_t family, int interface_index) {
 		return (socket_t)-1;
 	}
 
-	if (!socket_raw_set_hdrincl(sock)) {
-		socket_close(sock);
-		return (socket_t)-1;
-	}
-
 	if (family == AF_INET6) {
 		if (!socket_become_v6only(sock)) {
 			socket_close(sock);
@@ -434,7 +429,12 @@ socket_t open_raw_socket(sa_family_t family, int interface_index) {
 		}
 	}
 
-	if (!socket_raw_bind_to_interface(sock, interface_index)) {
+	if (!socket_raw_set_hdrincl(sock, family)) {
+		socket_close(sock);
+		return (socket_t)-1;
+	}
+
+	if (!socket_raw_bind_to_interface(sock, family, interface_index)) {
 		socket_close(sock);
 		return (socket_t)-1;
 	}

@@ -72,11 +72,11 @@ bool socket_become_reusable(socket_t socket);
 bool socket_become_v6only(socket_t socket);
 
 // Raw socket helper, sets IP_HDRINCL for both IPv4 and IPv6
-bool socket_raw_set_hdrincl(socket_t socket);
+bool socket_raw_set_hdrincl(socket_t socket, sa_family_t family);
 
 // Raw socket helper, sets SO_BINDTODEVICE or Windows equivalent
 // Takes the interface index, not the device name
-bool socket_raw_bind_to_interface(socket_t socket, int ifindex);
+bool socket_raw_bind_to_interface(socket_t socket, sa_family_t family, int ifindex);
 
 // Returns true if addresses match
 // Port number, and anything else, is ignored

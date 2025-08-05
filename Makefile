@@ -5,17 +5,19 @@
 # there is no way that I have found to do it all from within one file.
 
 WINDOWS = 1
-WARNINGFLAGS = /Wall /W4 /WX
+WARNINGFLAGS = /Wall /W4
+# Can't use /WX because Windows header files themselves have warnings
 
 RM = DEL
 CC = CL
 LINK = LINK
 
-EXE = .exe
-OBJ = .obj
+EXE = .EXE
+OBJ = .OBJ
 CCONLYARG = /EHsc /c
 CCOUTARG = /Fo:
 LINKOUTARG = /OUT:
+LINKLIBS = WS2_32.LIB IPHLPAPI.LIB
 
 # FUTURE: Move debug versus release to a flag in configure script
 DEBUG = 1

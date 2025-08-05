@@ -16,6 +16,7 @@ OBJ = .o
 CCONLYARG = -c
 CCOUTARG = -o$(SPACE)
 LINKOUTARG = -o$(SPACE)
+LINKLIBS =
 
 # FUTURE: Move debug versus release to a flag in configure script
 DEBUG = 1

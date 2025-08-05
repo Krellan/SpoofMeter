@@ -29,13 +29,13 @@ $(CLI)$(OBJ): $(CLI).cpp $(COM).h
 	$(CC) $(CCFLAGS) $(CCONLYARG) $(CLI).cpp $(CCOUTARG)$(CLI)$(OBJ)
 
 $(CLI)$(EXE): $(CLI)$(OBJ) $(COM)$(OBJ)
-	$(LINK) $(LINKFLAGS) $(CLI)$(OBJ) $(COM)$(OBJ) $(LINKOUTARG)$(CLI)$(EXE)
+	$(LINK) $(LINKFLAGS) $(CLI)$(OBJ) $(COM)$(OBJ) $(LINKLIBS) $(LINKOUTARG)$(CLI)$(EXE)
 
 $(SRV)$(OBJ): $(SRV).cpp $(COM).h
 	$(CC) $(CCFLAGS) $(CCONLYARG) $(SRV).cpp $(CCOUTARG)$(SRV)$(OBJ)
 
 $(SRV)$(EXE): $(SRV)$(OBJ) $(COM)$(OBJ)
-	$(LINK) $(LINKFLAGS) $(SRV)$(OBJ) $(COM)$(OBJ) $(LINKOUTARG)$(SRV)$(EXE)
+	$(LINK) $(LINKFLAGS) $(SRV)$(OBJ) $(COM)$(OBJ) $(LINKLIBS) $(LINKOUTARG)$(SRV)$(EXE)
 
 # The "-" is necessary because Microsoft DEL has no equivalent to -f ignore errors
 clean:

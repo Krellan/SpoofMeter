@@ -400,8 +400,6 @@ std::string sockaddr_to_string(const struct sockaddr *addr) {
 
 // Using struct sockaddr so it works for both IPv4 and IPv6
 std::string sockaddr_to_interface_name(const struct sockaddr *addr, /*OUT*/ int *ifindex) {
-	std::string result;
-
 	// Initialize output parameter
 	*ifindex = -1;
 
@@ -512,15 +510,8 @@ std::string sockaddr_to_interface_name(const struct sockaddr *addr, /*OUT*/ int 
 			continue;
 		}
 
-		bool match = false;
-
-		// TODO: now that we have socket_addresses_match() we can tighten up this code
-		if (socket_addresses_match(addr, if_iter->ifa_addr)) {
-			match = true;
+		if (sockaddr_addresses_match(addr, if_iter->ifa_addr)) {
 			printf("Match found on interface %s\n", if_iter->ifa_name);
-		}
-
-		if (match) {
 			result = if_iter->ifa_name;
 			
 			unsigned int index = if_nametoindex(result.c_str());
@@ -530,7 +521,6 @@ std::string sockaddr_to_interface_name(const struct sockaddr *addr, /*OUT*/ int 
 				*ifindex = (int)index;
 			}
 
-			printf("Match! %s is on interface %s\n", result.c_str(), result);
 			break;
 		}
 	}

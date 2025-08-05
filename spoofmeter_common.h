@@ -13,7 +13,10 @@
 // The following are general utilities,
 // not necessarily specific to SpoofMeter.
 
-#include <cstring>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
 #include <string>
 
 // Deal with Windows differences in network header files
@@ -40,7 +43,10 @@
     #include <netinet/ip6.h>
     #include <netinet/tcp.h>
     #include <netinet/udp.h>
+    #include <net/if.h>
     #include <arpa/inet.h>
+    #include <netdb.h>
+    #include <unistd.h>
     #include <errno.h>
 
     typedef int socket_t;

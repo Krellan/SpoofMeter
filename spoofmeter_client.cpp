@@ -1,5 +1,10 @@
 #include "spoofmeter_common.h"
 
+// Additional headers needed on Linux
+#ifndef _WIN32
+	#include <grp.h>
+#endif
+
 // This is the SpoofMeter client.
 // It is designed to talk to a SpoofMeter server.
 
@@ -216,8 +221,6 @@
 // and that random seed will be used to set the 8-byte session ID that we will be using
 // as well as all other randomness decisions we will be making
 
-#include <cstdio>
-#include <stdio.h>
 
 static socket_t raw_ipv4_socket = (socket_t)-1;
 static socket_t raw_ipv6_socket = (socket_t)-1;
@@ -422,12 +425,15 @@ socket_t open_raw_socket(sa_family_t family, int interface_index) {
 		return (socket_t)-1;
 	}
 
+	// Linux gives an error if IPV6_V6ONLY used on raw socket
+#ifdef _WIN32
 	if (family == AF_INET6) {
 		if (!socket_become_v6only(sock)) {
 			socket_close(sock);
 			return (socket_t)-1;
 		}
 	}
+#endif
 
 	if (!socket_raw_set_hdrincl(sock, family)) {
 		socket_close(sock);

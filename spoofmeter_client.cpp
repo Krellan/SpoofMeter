@@ -326,19 +326,23 @@ socket_t open_ipv4_udp_socket(struct in_addr remote_ip, uint16_t port, struct in
 	printf("Local after lookup: %s\n", sockaddr_to_string((struct sockaddr *)&addr_lookup).c_str());
 
 	std::string interface_name;
+	int interface_index = -1;
 
 	// TODO: fix this, we are also returning the number now, pass it along
-	interface_name = local_ip_to_interface_name((struct sockaddr *)&addr_lookup);
-	if (interface_name.empty()) {
+	interface_name = sockaddr_to_interface_name((struct sockaddr *)&addr_lookup, &interface_index);
+	if (interface_index == -1) {
 		fprintf(stderr, "Failed to determine interface name for local IP!\n");
 		socket_close(fd_udp);
 		return (socket_t)-1;
 	}
 
+	printf("Found interface: %s (index %d)\n", interface_name.c_str(), interface_index);
+
 	// Populate out-parameters
 	*out_local_ip = addr_local.sin_addr;
 	*out_interface_name = interface_name;
-	
+	// TODO: index also, so we can pass it along to raw opener
+
 	return fd_udp;
 }
 
@@ -351,7 +355,7 @@ socket_t open_ipv6_udp_socket(struct in6_addr remote_ip, uint16_t port, struct i
 	return (socket_t)-1;
 }
 
-socket_t open_ipv4_raw_socket(const std::string& interface_name) {
+socket_t open_ipv4_raw_socket(int interface_index) {
 	socket_t fd_raw;
 	
 	// Tell the kernel we are attempting to spoof UDP protocol
@@ -361,25 +365,12 @@ socket_t open_ipv4_raw_socket(const std::string& interface_name) {
 		return (socket_t)-1;
 	}
 
-	int result;
-	int value = 1;
-	
-	socklen_t len = sizeof(value);
-
-	result = setsockopt(fd_raw, IPPROTO_IP, IP_HDRINCL, (const char *)&value, len);
-	if (result != 0) {
-		perror("Failed to set IP_HDRINCL");
+	if (!socket_raw_set_hdrincl(fd_raw)) {
 		socket_close(fd_raw);
 		return (socket_t)-1;
 	}
 
-	len = (socklen_t)interface_name.size();
-	
-	// TODO: Windows will need IP_UNICAST_IF or IPV6_UNICAST_IF instead of SO_BINDTODEVICE
-	// and it needs index (not name), and it is at IPPROTO_IP[V6] level not SOL_SOCKET
-	result = setsockopt(fd_raw, SOL_SOCKET, SO_BINDTODEVICE, interface_name.c_str(), len);
-	if (result != 0) {
-		perror("Failed to set SO_BINDTODEVICE");
+	if (!socket_raw_bind_to_interface(fd_raw, interface_index)) {
 		socket_close(fd_raw);
 		return (socket_t)-1;
 	}
@@ -387,7 +378,8 @@ socket_t open_ipv4_raw_socket(const std::string& interface_name) {
 	return fd_raw;
 }
 
-socket_t open_ipv6_raw_socket(const std::string& interface_name) {
+// TODO: unify these as there is little difference now
+socket_t open_ipv6_raw_socket(int interface_index) {
 	socket_t fd_raw;
 	
 	// Tell the kernel we are attempting to spoof UDP protocol
@@ -397,30 +389,12 @@ socket_t open_ipv6_raw_socket(const std::string& interface_name) {
 		return (socket_t)-1;
 	}
 
-	int result;
-	int value = 1;
-	
-	socklen_t len = sizeof(value);
-
-	result = setsockopt(fd_raw, IPPROTO_IPV6, IPV6_HDRINCL, (const char *)&value, sizeof(value));
-	if (result != 0) {
-		perror("Failed to set IP_HDRINCL");
+	if (!socket_raw_set_hdrincl(fd_raw)) {
 		socket_close(fd_raw);
 		return (socket_t)-1;
 	}
 
-	if (!socket_become_v6only(fd_raw)) {
-		socket_close(fd_raw);
-		return (socket_t)-1;
-	}
-
-	len = (socklen_t)interface_name.size();
-	
-	// TODO: Windows will need IP_UNICAST_IF or IPV6_UNICAST_IF instead of SO_BINDTODEVICE
-	// and it needs index (not name), and it is at IPPROTO_IP[V6] level not SOL_SOCKET
-	result = setsockopt(fd_raw, SOL_SOCKET, SO_BINDTODEVICE, interface_name.c_str(), len);
-	if (result != 0) {
-		perror("Failed to set SO_BINDTODEVICE");
+	if (!socket_raw_bind_to_interface(fd_raw, interface_index)) {
 		socket_close(fd_raw);
 		return (socket_t)-1;
 	}

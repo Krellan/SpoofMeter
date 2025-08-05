@@ -12,10 +12,7 @@ bool sockets_init() {
 	// Winsock 2.2 is the standard version number these days
 	if (WSAStartup(MAKEWORD(byHiExp, byLoExp), &wsaData) != 0) {
 		// Initialization failed
-		fprintf(stderr, "Failed to initialize Winsock: %d\n",
-			WSAGetLastError()
-		);
-		
+		socket_error("Winsock failed to initialize");
 		return false;
 	}
 
@@ -36,7 +33,9 @@ bool sockets_init() {
 	
 	return true;
 #else
-	// As Linux is more reliable than Windows, network initialization will always succeed
+	// As Linux was built on the Internet from day one,
+	// and networking was not bolted on as an afterthought,
+	// network initialization will always succeed.
 	return true;
 #endif
 }
@@ -44,6 +43,57 @@ bool sockets_init() {
 void sockets_cleanup() {
 #ifdef _WIN32
 	WSACleanup();
+#endif
+}
+
+void socket_error(const std::string& msg) {
+#ifdef _WIN32
+	DWORD dwCode = WSAGetLastError();
+	
+	// If no Winsock error, fall back to general Windows GetLastError()
+	if (dwCode == ERROR_SUCCESS) {
+		dwCode = GetLastError();
+	}
+	
+	char *szBuffer = NULL;
+	
+	DWORD result = FormatMessageA(
+		FORMAT_MESSAGE_ALLOCATE_BUFFER |
+		FORMAT_MESSAGE_FROM_SYSTEM |
+		FORMAT_MESSAGE_IGNORE_INSERTS,
+		NULL,
+		dwCode,
+		0,
+		(LPSTR)&szBuffer,
+		0,
+		NULL
+	);
+	
+	if (szBuffer != NULL && result != 0) {
+		fprintf(stderr, "%s: %s (%u)\n",
+			msg.c_str(),
+			szBuffer,
+			(unsigned int)dwCode
+		);
+	} else {
+		fprintf(stderr, "%s: Error (%u)\n",
+			msg.c_str(),
+			(unsigned int)dwCode
+		);
+	}
+
+	// Always free the buffer if allocated, even if lookup failed
+	if (szBuffer != NULL) {
+		LocalFree(szBuffer);
+	}
+#else
+	int code = errno;
+
+	fprintf(stderr, "%s: %s (%u)\n",
+		msg.c_str(),
+		strerror(code),
+		(unsigned int)code
+	);
 #endif
 }
 
@@ -59,8 +109,7 @@ bool socket_close(socket_t socket) {
 	if (result != 0) {
 		// Just a warning, as we are closing anyway
 		// and there is not much we can do about it.
-		perror("Failed to close socket");
-
+		socket_error("Failed to close socket");
 		return false;
 	}
 
@@ -88,7 +137,7 @@ bool socket_become_nonblocking(socket_t fd) {
 	u_long mode = 1; // 1 = non-blocking, 0 = blocking
 
 	if (ioctlsocket(fd, FIONBIO, &mode) != 0) {
-		fprintf(stderr, "Failed to set socket to non-blocking: %d\n", WSAGetLastError());
+		socket_error("Failed to set socket to non-blocking");
 		return false;
 	}
 #else
@@ -96,13 +145,13 @@ bool socket_become_nonblocking(socket_t fd) {
 	
 	flags = fcntl(fd, F_GETFL, 0);
 	if (flags == -1) {
-		perror("Failed to get file descriptor flags");
+		socket_error("Failed to get file descriptor flags");
 		return false;
 	}
 
 	flags |= O_NONBLOCK;
 	if (fcntl(fd, F_SETFL, flags) == -1) {
-		perror("Failed to set file descriptor to non-blocking");
+		socket_error("Failed to set file descriptor to non-blocking");
 		return false;
 	}
 #endif
@@ -115,7 +164,7 @@ bool socket_become_reusable(socket_t fd) {
 	socklen_t optlen = sizeof(one);
 
 	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&one, optlen) != 0) {
-		perror("Failed to set SO_REUSEADDR");
+		socket_error("Failed to set SO_REUSEADDR");
 		return false;
 	}
 
@@ -123,7 +172,7 @@ bool socket_become_reusable(socket_t fd) {
 	// SO_REUSEPORT not available and not needed on Windows
 	// Windows SO_REUSEADDR is more permissive and already does this too
 	if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, (const char *)&one, optlen) != 0) {
-		perror("Failed to set SO_REUSEPORT");
+		socket_error("Failed to set SO_REUSEPORT");
 		return false;
 	}
 #endif
@@ -136,11 +185,74 @@ bool socket_become_v6only(socket_t fd) {
 	socklen_t optlen = sizeof(one);
 
 	if (setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, (const char *)&one, optlen) != 0) {
-		perror("Failed to set IPV6_V6ONLY");
+		socket_error("Failed to set IPV6_V6ONLY");
 		return false;
 	}
 
 	return true;
+}
+
+bool socket_raw_set_hdrincl(socket_t socket) {
+	int result_v4;
+	int result_v6;
+	int one = 1;
+	socklen_t len = sizeof(one);
+
+	// As we do not know the socket address family, try them both
+	result_v4 = setsockopt(socket, IPPROTO_IP, IP_HDRINCL, (const char *)&one, len);
+	result_v6 = setsockopt(socket, IPPROTO_IPV6, IPV6_HDRINCL, (const char *)&one, len);
+	
+	// Both must succeed, in order to be considered successful
+	if (result_v4 == 0 && result_v6 == 0) {
+		return true;
+	}
+
+	socket_error("Failed to set IP_HDRINCL");
+	return false;
+}
+
+bool socket_raw_bind_to_interface(socket_t socket, int ifindex) {
+#ifdef _WIN32
+	// Windows takes the interface index, not name,
+	// and it is at IP level, not SOL_SOCKET,
+	// and it applies only to unicast (which is good enough for us).
+	int result_v4;
+	int result_v6;
+	DWORD dwIfIndex = (DWORD)ifindex;
+	socklen_t len = sizeof(dwIfIndex);
+
+	// As we do not know the socket address family, try them both
+	result_v4 = setsockopt(socket, IPPROTO_IP, IP_UNICAST_IF, (const char *)&dwIfIndex, len);
+	result_v6 = setsockopt(socket, IPPROTO_IPV6, IPV6_UNICAST_IF, (const char *)&dwIfIndex, len);
+
+	// Both must succeed, in order to be considered successful
+	if (result_v4 == 0 && result_v6 == 0) {
+		return true;
+	}
+
+	socket_error("Failed to set IP_UNICAST_IF");
+#else
+	char namebuf[IF_NAMESIZE + 1];
+
+	// Linux uses SO_BINDTODEVICE, which takes device name instead
+	if (if_indextoname(ifindex, namebuf) == NULL) {
+		socket_error("Failed to look up interface name");
+		return false;
+	}
+
+	// Ensure NUL-terminated
+	namebuf[IF_NAMESIZE] = '\0';
+
+	socklen_t len = strlen(namebuf);
+
+	int result = setsockopt(socket, SOL_SOCKET, SO_BINDTODEVICE, namebuf, len);
+	if (result == 0) {
+		return true;
+	}
+
+	socket_error("Failed to set SO_BINDTODEVICE");
+#endif
+	return false;
 }
 
 std::string sockaddr_to_string(const struct sockaddr *addr) {
@@ -176,14 +288,17 @@ std::string sockaddr_to_string(const struct sockaddr *addr) {
 	if (result != 0)
 	{
 #ifdef _WIN32
-		fprintf(stderr, "Failed getnameinfo: %d\n", WSAGetLastError());
+		socket_error("Failed getnameinfo");
 #else
 		// Compensate for getnameinfo() using its own error namespace above errno
-		if (result == EAI_SYSTEM) {
-			// Fall through to errno
-			perror("Failed getnameinfo");
+		if (result != EAI_SYSTEM) {
+			fprintf(stderr, "Failed getnameinfo: %s (%u)\n",
+				gai_strerror(result),
+				(unsigned int)result
+			);
 		} else {
-			fprintf(stderr, "Failed getnameinfo: %s\n", gai_strerror(result));
+			// Fall through to errno
+			socket_error("Failed getnameinfo");
 		}
 #endif
 
@@ -229,19 +344,19 @@ std::string sockaddr_to_interface_name(const struct sockaddr *addr, /*OUT*/ int 
 
 	// First call to get the required buffer size
 	if (GetAdaptersAddresses(family, flags, NULL, pAdapters, &bufferSize) != ERROR_BUFFER_OVERFLOW) {
-		fprintf(stderr, "Failed to get adapter addresses: %u\n", (unsigned int)GetLastError());
+		socket_error("Failed to get adapter addresses");
 		return std::string();
 	}
 
 	pAdapters = (PIP_ADAPTER_ADDRESSES)malloc(bufferSize);
 	if (pAdapters == NULL) {
-		perror("Failed to allocate memory");
+		socket_error("Failed to allocate memory");
 		return std::string();
 	}
 
 	if (GetAdaptersAddresses(family, flags, NULL, pAdapters, &bufferSize) != ERROR_SUCCESS) {
 		free(pAdapters);
-		fprintf(stderr, "Failed to get adapter addresses: %u\n", (unsigned int)GetLastError());
+		socket_error("Failed to get adapter addresses");
 		return std::string();
 	}
 
@@ -253,7 +368,7 @@ std::string sockaddr_to_interface_name(const struct sockaddr *addr, /*OUT*/ int 
 	// Linux uses getifaddrs()
 	struct ifaddrs *if_list = NULL;
 	if (getifaddrs(&if_list) != 0) {
-		perror("Failed to get interface addresses");
+		socket_error("Failed to get interface addresses");
 		return std::string();
 	}
 	if (if_list == NULL) {

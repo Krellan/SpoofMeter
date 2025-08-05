@@ -53,6 +53,9 @@
 bool sockets_init();
 void sockets_cleanup();
 
+// Windows uses different error handling, can't just use perror()
+void socket_error(const std::string& msg);
+
 // Windows requires different closer for sockets, can't just use close()
 bool socket_close(socket_t socket);
 
@@ -67,6 +70,13 @@ bool socket_become_reusable(socket_t socket);
 
 // Makes an IPv6 socket become IPv6-only (SO_V6ONLY)
 bool socket_become_v6only(socket_t socket);
+
+// Raw socket helper, sets IP_HDRINCL for both IPv4 and IPv6
+bool socket_raw_set_hdrincl(socket_t socket);
+
+// Raw socket helper, sets SO_BINDTODEVICE or Windows equivalent
+// Takes the interface index, not the device name
+bool socket_raw_bind_to_interface(socket_t socket, int ifindex);
 
 // Prettyprints a sockaddr (either IPv4 or IPv6) as a human-readable string
 // Returns empty string on error

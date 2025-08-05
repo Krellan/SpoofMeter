@@ -78,6 +78,10 @@ bool socket_raw_set_hdrincl(socket_t socket);
 // Takes the interface index, not the device name
 bool socket_raw_bind_to_interface(socket_t socket, int ifindex);
 
+// Returns true if addresses match
+// Port number, and anything else, is ignored
+bool sockaddr_addresses_match(const struct sockaddr *a, const struct sockaddr *b);
+
 // Prettyprints a sockaddr (either IPv4 or IPv6) as a human-readable string
 // Returns empty string on error
 std::string sockaddr_to_string(const struct sockaddr *addr);

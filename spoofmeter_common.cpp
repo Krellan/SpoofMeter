@@ -3,6 +3,11 @@
 #include <stdio.h>
 #include <fcntl.h>
 
+// Additional header needed only during this internal implementation
+#ifndef _WIN32
+#include <ifaddrs.h>
+#endif
+
 bool sockets_init() {
 #ifdef _WIN32
 	WSADATA wsaData;
@@ -30,14 +35,13 @@ bool sockets_init() {
 	printf("Winsock initialized: version %u.%u\n",
 		(unsigned int)byHiRec, (unsigned int)byLoRec
 	);
-	
-	return true;
 #else
 	// As Linux was built on the Internet from day one,
 	// and networking was not bolted on as an afterthought,
 	// network initialization will always succeed.
-	return true;
+	printf("LinuxSock initialized :)\n");
 #endif
+	return true;
 }
 
 void sockets_cleanup() {
@@ -255,6 +259,49 @@ bool socket_raw_bind_to_interface(socket_t socket, int ifindex) {
 	return false;
 }
 
+bool sockaddr_addresses_match(const struct sockaddr *a, const struct sockaddr *b) {
+	if (a == NULL) {
+		printf("No match: first address nonexistent\n");
+		return false;
+	}
+	if (b == NULL) {
+		printf("No match: second address nonexistent\n");
+		return false;
+	}
+
+	sa_family_t famA = a->sa_family;
+	sa_family_t famB = b->sa_family;
+
+	if (famA != famB) {
+		printf("No match on address family: %d != %d\n", (int)famA, (int)famB);
+		return false;
+	}
+
+	// Compare only the address field, ignore everything else.
+	// In particular, there is actually a Linux bug, in getifaddrs(),
+	// the port number is filled in with uninitialized garbage.
+	if (famA == AF_INET) {
+		struct sockaddr_in *addrA = (struct sockaddr_in *)a;
+		struct sockaddr_in *addrB = (struct sockaddr_in *)b;
+		if (memcmp(&addrA->sin_addr, &addrB->sin_addr, sizeof(struct in_addr)) == 0) {
+			printf("Match IPv4: %s == %s\n", sockaddr_to_string(a).c_str(), sockaddr_to_string(b).c_str());
+			return true;
+		}
+	}
+
+	if (famA == AF_INET6) {
+		struct sockaddr_in6 *addrA = (struct sockaddr_in6 *)a;
+		struct sockaddr_in6 *addrB = (struct sockaddr_in6 *)b;
+		if (memcmp(&addrA->sin6_addr, &addrB->sin6_addr, sizeof(struct in6_addr)) == 0) {
+			printf("Match IPv6: %s == %s\n", sockaddr_to_string(a).c_str(), sockaddr_to_string(b).c_str());
+			return true;
+		}
+	}
+
+	printf("No match: %s != %s\n", sockaddr_to_string(a).c_str(), sockaddr_to_string(b).c_str());
+	return false;
+}
+
 std::string sockaddr_to_string(const struct sockaddr *addr) {
 	sa_family_t family = addr->sa_family;
 	socklen_t addrlen;
@@ -344,7 +391,7 @@ std::string sockaddr_to_interface_name(const struct sockaddr *addr, /*OUT*/ int 
 
 	// First call to get the required buffer size
 	if (GetAdaptersAddresses(family, flags, NULL, pAdapters, &bufferSize) != ERROR_BUFFER_OVERFLOW) {
-		socket_error("Failed to get adapter addresses");
+		socket_error("Failed to query adapter addresses");
 		return std::string();
 	}
 
@@ -360,8 +407,58 @@ std::string sockaddr_to_interface_name(const struct sockaddr *addr, /*OUT*/ int 
 		return std::string();
 	}
 
-	// TODO: walk through it, that's the fun part
-	// Do not forget IfIndex versus Ipv6IfIndex
+	PIP_ADAPTER_ADDRESSES pIterAdapter = pAdapters;
+
+	// Two layers of linked lists to walk through
+	while(pIterAdapter != NULL) {
+		PIP_ADAPTER_UNICAST_ADDRESS pIterUnicast = pIterAdapter->FirstUnicastAddress;
+		
+		bool match = false;
+		
+		// Consider only unicast addresses, as that is what IP_UNICAST_IF wants
+		while(pIterUnicast != NULL) {
+			struct sockaddr *pIterAddr = pIterUnicast->Address.lpSockaddr;
+
+			if (pIterAddr != NULL) {
+				if (sockaddr_addresses_match(addr, pIterAddr)) {
+					match = true;
+					printf("Match found on adapter %s\n", pIterAdapter->AdapterName);
+
+					break;
+				}
+			}
+
+			pIterUnicast = pIterUnicast->Next;
+		}
+
+		if (match) {
+			result = pIterAdapter->AdapterName;
+
+			// This is for IPv4 (and perhaps others)
+			IF_INDEX ifIndex = pIterAdapter->IfIndex;
+			
+			// IPv6 is in a separate field
+			if (family == AF_INET6) {
+				IF_INDEX ifIndex_v6 = pIterAdapter->Ipv6IfIndex;
+				
+				// Prefer it only if it was correctly filled in
+				if (ifIndex_v6 > 0) {
+					ifIndex = ifIndex_v6;
+				}
+			}
+
+			// 0 indicates error here, so if this happens leave output at -1
+			if (ifIndex > 0) {
+				int nIndex = (int)ifIndex;
+
+				*ifindex = nIndex;
+			}
+
+			break;
+		}
+
+		pIterAdapter = pIterAdapter->Next;
+	}
 
 	free(pAdapters);
 #else
@@ -386,33 +483,12 @@ std::string sockaddr_to_interface_name(const struct sockaddr *addr, /*OUT*/ int 
 			continue;
 		}
 
-		printf("Considering interface %s: family %d\n", if_iter->ifa_name, (int)if_iter->ifa_addr->sa_family);
-
-		// Skip over interfaces that are not the right family
-		if (if_iter->ifa_addr->sa_family != family) {
-			continue;
-		}
-
-		printf("Considering interface %s: address %s\n", if_iter->ifa_name, sockaddr_to_string(addr).c_str());
-
 		bool match = false;
 
-		// Compare only the address field, ignore everything else
-		// In particular, Linux bug, the port number is uninitialized garbage
-		if (family == AF_INET) {
-			struct sockaddr_in *local_addr = (struct sockaddr_in *)addr;
-			struct sockaddr_in *iter_addr = (struct sockaddr_in *)if_iter->ifa_addr;
-			if (memcmp(&local_addr->sin_addr, &iter_addr->sin_addr, sizeof(struct in_addr)) == 0) {
-				match = true;
-			}
-		}
-
-		if (family == AF_INET6) {
-			struct sockaddr_in6 *local_addr = (struct sockaddr_in6 *)addr;
-			struct sockaddr_in6 *iter_addr = (struct sockaddr_in6 *)if_iter->ifa_addr;
-			if (memcmp(&local_addr->sin6_addr, &iter_addr->sin6_addr, sizeof(struct in6_addr)) == 0) {
-				match = true;
-			}
+		// TODO: now that we have socket_addresses_match() we can tighten up this code
+		if (socket_addresses_match(addr, if_iter->ifa_addr)) {
+			match = true;
+			printf("Match found on interface %s\n", if_iter->ifa_name);
 		}
 
 		if (match) {
@@ -421,11 +497,11 @@ std::string sockaddr_to_interface_name(const struct sockaddr *addr, /*OUT*/ int 
 			unsigned int index = if_nametoindex(result.c_str());
 
 			// 0 indicates error here, so if this happens leave output at -1
-			if (index != 0) {
+			if (index > 0) {
 				*ifindex = (int)index;
 			}
 
-			printf("Match! %s (index %u)\n", result.c_str(), index);
+			printf("Match! %s is on interface %s\n", result.c_str(), result);
 			break;
 		}
 	}

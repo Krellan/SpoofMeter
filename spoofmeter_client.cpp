@@ -219,11 +219,6 @@
 #include <cstdio>
 #include <stdio.h>
 
-// TODO: this is obscure, but maybe move it into compatibility blob in common
-#ifndef _WIN32
-#include <ifaddrs.h>
-#endif
-
 static socket_t raw_ipv4_socket = (socket_t)-1;
 static socket_t raw_ipv6_socket = (socket_t)-1;
 
@@ -248,8 +243,9 @@ void close_sockets() {
 
 // Same port number is used for both local port and remote port
 // TODO: no, this will not work, can't test on 127.0.0.1 unless these are different ports
-socket_t open_ipv4_udp_socket(struct in_addr remote_ip, uint16_t port, struct in_addr *out_local_ip, std::string *out_interface_name) {
-	socket_t fd_udp;
+// Only the address portion of the remote_addr sockaddr is used
+socket_t open_udp_socket(sa_family_t family, uint16_t local_port, uint16_t remote_port, const struct sockaddr *remote_addr, /*OUT*/ int *out_ifindex) {
+	socket_t sock;
 
 	// TODO: break this function down more
 	// name lookup needs to happen as a separate step
@@ -259,41 +255,52 @@ socket_t open_ipv4_udp_socket(struct in_addr remote_ip, uint16_t port, struct in
 	// Unify ipv4 and ipv6 code paths
 	// there is only a few key differences we need
 
-	// Initialize the out-parameters
-	memset(out_local_ip, 0, sizeof(*out_local_ip));
-	out_interface_name->clear();
+	// Initialize output parameters
+	*out_ifindex = -1;
 
-	fd_udp = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	if (fd_udp == (socket_t)-1) {
-		perror("Failed to create IPv4 UDP socket");
+	sock = socket(family, SOCK_DGRAM, IPPROTO_UDP);
+	if (sock == (socket_t)-1) {
+		socket_error("Failed to create UDP socket");
 		return (socket_t)-1;
 	}
 
-	int value = 1;
-	socklen_t len = sizeof(value);
-
-	if (!socket_become_reusable(fd_udp)) {
-		socket_close(fd_udp);
+	if (!socket_become_nonblocking(sock)) {
+		socket_close(sock);
 		return (socket_t)-1;
+	}
+
+	if (!socket_become_reusable(sock)) {
+		socket_close(sock);
+		return (socket_t)-1;
+	}
+
+	if (family == AF_INET6) {
+		if (!socket_become_v6only(sock)) {
+			socket_close(sock);
+			return (socket_t)-1;
+		}
 	}
 
 	// Bind the UDP socket to the local port number on all interfaces
 	struct sockaddr_in addr_local;
-	len = sizeof(addr_local);
+	socklen_t len = sizeof(addr_local);
+	
+	// TODO different if IPv6 
 	memset(&addr_local, 0, (size_t)len);
 	addr_local.sin_family = AF_INET;
-	addr_local.sin_port = htons(port);
+	addr_local.sin_port = htons(local_port);
 	addr_local.sin_addr.s_addr = INADDR_ANY;
 
-	if (bind(fd_udp, (struct sockaddr *)&addr_local, len) != 0) {
-		perror("Failed to bind IPv4 UDP socket");
-		socket_close(fd_udp);
+	if (bind(sock, (struct sockaddr *)&addr_local, len) != 0) {
+		socket_error("Failed to bind UDP socket");
+		socket_close(sock);
 		return (socket_t)-1;
 	}
 	printf("Local after bind: %s\n", sockaddr_to_string((struct sockaddr *)&addr_local).c_str());
 
 	// Connect the UDP socket, which sends nothing on the network,
 	// but causes the kernel to look up the route to the remote host.
+	// TODO different if IPv6
 	struct sockaddr_in addr_remote;
 	len = sizeof(addr_remote);
 	memset(&addr_remote, 0, (size_t)len);
@@ -301,8 +308,8 @@ socket_t open_ipv4_udp_socket(struct in_addr remote_ip, uint16_t port, struct in
 	addr_remote.sin_port = htons(port);
 	addr_remote.sin_addr = remote_ip;
 
-	if (connect(fd_udp, (struct sockaddr *)&addr_remote, len) != 0) {
-		perror("Failed to connect IPv4 UDP socket");
+	if (connect(sock, (struct sockaddr *)&addr_remote, len) != 0) {
+		socket_error("Failed to connect IPv4 UDP socket");
 		socket_close(fd_udp);
 		return (socket_t)-1;
 	}
@@ -313,9 +320,10 @@ socket_t open_ipv4_udp_socket(struct in_addr remote_ip, uint16_t port, struct in
 	len = sizeof(addr_lookup);
 	memset(&addr_lookup, 0, (size_t)len);
 
-	if (getsockname(fd_udp, (struct sockaddr *)&addr_lookup, &len) != 0) {
-		perror("Failed to get local socket name");
-		socket_close(fd_udp);
+	// TODO: again generalize to IPv4 versus IPv6
+	if (getsockname(sock, (struct sockaddr *)&addr_lookup, &len) != 0) {
+		socket_error("Failed to get local socket name");
+		socket_close(sock);
 		return (socket_t)-1;
 	}
 	if (len != sizeof(addr_lookup)) {
@@ -339,11 +347,9 @@ socket_t open_ipv4_udp_socket(struct in_addr remote_ip, uint16_t port, struct in
 	printf("Found interface: %s (index %d)\n", interface_name.c_str(), interface_index);
 
 	// Populate out-parameters
-	*out_local_ip = addr_local.sin_addr;
-	*out_interface_name = interface_name;
-	// TODO: index also, so we can pass it along to raw opener
+	*out_ifindex = interface_index;
 
-	return fd_udp;
+	return sock;
 }
 
 socket_t open_ipv6_udp_socket(struct in6_addr remote_ip, uint16_t port, struct in6_addr *out_local_ip, std::string *out_interface_name) {
@@ -355,51 +361,44 @@ socket_t open_ipv6_udp_socket(struct in6_addr remote_ip, uint16_t port, struct i
 	return (socket_t)-1;
 }
 
-socket_t open_ipv4_raw_socket(int interface_index) {
-	socket_t fd_raw;
+socket_t open_raw_socket(sa_family_t family,int interface_index) {
+	socket_t sock;
 	
 	// Tell the kernel we are attempting to spoof UDP protocol
-	fd_raw = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
-	if (fd_raw == (socket_t)-1) {
-		perror("Failed to create IPv4 raw socket");
+	sock = socket(family, SOCK_RAW, IPPROTO_UDP);
+	if (sock == (socket_t)-1) {
+		socket_error("Failed to create raw socket");
 		return (socket_t)-1;
 	}
 
-	if (!socket_raw_set_hdrincl(fd_raw)) {
-		socket_close(fd_raw);
+	if (!socket_become_nonblocking(sock)) {
+		socket_close(sock);
 		return (socket_t)-1;
 	}
 
-	if (!socket_raw_bind_to_interface(fd_raw, interface_index)) {
-		socket_close(fd_raw);
+	if (!socket_become_reusable(sock)) {
+		socket_close(sock);
 		return (socket_t)-1;
 	}
 
-	return fd_raw;
-}
-
-// TODO: unify these as there is little difference now
-socket_t open_ipv6_raw_socket(int interface_index) {
-	socket_t fd_raw;
-	
-	// Tell the kernel we are attempting to spoof UDP protocol
-	fd_raw = socket(AF_INET6, SOCK_RAW, IPPROTO_UDP);
-	if (fd_raw == (socket_t)-1) {
-		perror("Failed to create IPv4 raw socket");
+	if (!socket_raw_set_hdrincl(sock)) {
+		socket_close(sock);
 		return (socket_t)-1;
 	}
 
-	if (!socket_raw_set_hdrincl(fd_raw)) {
-		socket_close(fd_raw);
+	if (family == AF_INET6) {
+		if (!socket_become_v6only(sock)) {
+			socket_close(sock);
+			return (socket_t)-1;
+		}
+	}
+
+	if (!socket_raw_bind_to_interface(sock, interface_index)) {
+		socket_close(sock);
 		return (socket_t)-1;
 	}
 
-	if (!socket_raw_bind_to_interface(fd_raw, interface_index)) {
-		socket_close(fd_raw);
-		return (socket_t)-1;
-	}
-
-	return fd_raw;
+	return sock;
 }
 
 bool open_client_sockets() {
@@ -433,7 +432,9 @@ bool open_client_sockets() {
 	struct in6_addr remote_ipv6;
 
 	// TODO: this should be passed in from command line options
-	uint16_t port = 12345;
+	// if testing by connecting to localhost, local and remote port numbers must differ
+	uint16_t local_port = 12346;
+	uint16_t remote_port = 12345;
 
 	// TODO: these should come from hostname lookup earlier, from command line options
 	inet_pton(AF_INET, "127.0.0.1", &remote_ipv4);
@@ -443,7 +444,7 @@ bool open_client_sockets() {
 
 	udp_ipv4_socket = open_ipv4_udp_socket(remote_ipv4, port, &local_ipv4, &interface_ipv4);
 
-	raw_ipv4_socket = open_ipv4_raw_socket(interface_ipv4);
+	raw_ipv4_socket = open_raw_socket(AF_INET, interface_ipv4);
 	if (raw_ipv4_socket == (socket_t)-1) {
 		fprintf(stderr, "Failed to open raw IPv4 socket!\n");
 		return false;
@@ -453,7 +454,7 @@ bool open_client_sockets() {
 
 	udp_ipv6_socket = open_ipv6_udp_socket(remote_ipv6, port, &local_ipv6, &interface_ipv6);
 
-	raw_ipv6_socket = open_ipv6_raw_socket(interface_ipv6);
+	raw_ipv6_socket = open_raw_socket(AF_INET6, interface_ipv6);
 	if (raw_ipv6_socket == (socket_t)-1) {
 		fprintf(stderr, "Failed to open raw IPv6 socket!\n");
 		return false;

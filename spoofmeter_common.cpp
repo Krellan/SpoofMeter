@@ -410,6 +410,8 @@ std::string sockaddr_to_interface_name(const struct sockaddr *addr, /*OUT*/ int 
 		return std::string();
 	}
 
+	std::string result;
+
 	printf("Looking up interface of IP address: %s\n", sockaddr_to_string(addr).c_str());
 #ifdef _WIN32
 	ULONG bufferSize = 0;
@@ -501,8 +503,6 @@ std::string sockaddr_to_interface_name(const struct sockaddr *addr, /*OUT*/ int 
 	}
 
 	// At this point, we are now responsible for freeing the ifaddrs list
-	std::string result;
-
 	// Walk through the list
 	for(struct ifaddrs *if_iter = if_list; if_iter != NULL; if_iter = if_iter->ifa_next) {
 		// Skip over interfaces that have no local address

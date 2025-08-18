@@ -1,14 +1,19 @@
 #!/bin/sh
 
+# Be verbose and exit immediately if any step fails
 set -e
 set -x
 
-# Run CMake to build SpoofMeter
+# There appears to be no "make clean" equivalent in CMake
+# Fortunately all build products are isolated into one subdirectory
 rm -rf build
 mkdir build
+
+# Run CMake to build SpoofMeter
 cd build
 cmake -S .. -B .
-cmake --build .
+cmake --build . --verbose
+cmake --install . --verbose
 cd ..
 
 echo "The build of SpoofMeter has completed successfully!"

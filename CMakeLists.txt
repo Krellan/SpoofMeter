@@ -14,6 +14,8 @@ project(SpoofMeter
         LANGUAGES CXX
 )
 
+message(STATUS "SpoofMeter now building!")
+
 # Set only if the default has not already been established somewhere else
 # https://cliutils.gitlab.io/modern-cmake/chapters/features/cpp11.html
 set(CMAKE_CXX_STANDARD 11 CACHE STRING "The C++ standard to use")
@@ -24,13 +26,13 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # TODO: Change default to OFF here when reasonably complete
-option(DEBUG
+option(OPTION_DEBUG
         "Build mode, ON for debug, OFF for release"
         ON
 )
 
-if(DEBUG)
-        message(STATUS "Building in Debug mode")
+if(OPTION_DEBUG)
+        message(STATUS "Detected option to build in Debug mode")
 
         set(CMAKE_BUILD_TYPE Debug)
 
@@ -53,7 +55,7 @@ if(DEBUG)
                 "/DEBUG:FULL"
         )
 else()
-        message(STATUS "Building in Release mode")
+        message(STATUS "Detected option to build in Release mode")
         
         set(CMAKE_BUILD_TYPE Release)
 
@@ -73,7 +75,7 @@ endif()
 
 # TODO: also support the Mac
 if (MSVC)
-        message(STATUS "Building with Windows compiler")
+        message(STATUS "Detected the Windows toolchain")
         
         set(DEBUG_CC_FLAGS ${DEBUG_WIN_CC_FLAGS})
         set(DEBUG_LD_FLAGS ${DEBUG_WIN_LD_FLAGS})
@@ -93,7 +95,7 @@ if (MSVC)
                 "iphlpapi.lib"
         )
 else()
-        message(STATUS "Building with GNU compiler")
+        message(STATUS "Detected the GNU toolchain")
         
         set(DEBUG_CC_FLAGS ${DEBUG_GNU_CC_FLAGS})
         set(DEBUG_LD_FLAGS ${DEBUG_GNU_LD_FLAGS})
@@ -169,3 +171,4 @@ target_link_libraries(spoofmeter_server PRIVATE
         spoofmeter_common_lib
 )
 
+message(STATUS "SpoofMeter now done with CMakeLists file!")

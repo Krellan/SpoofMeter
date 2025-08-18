@@ -1,9 +1,13 @@
 #!/bin/sh
 
-# SpoofMeter
-mkdir -p build
-cmake -S . -B build
+set -e
+set -x
+
+# Run CMake to build SpoofMeter
+rm -rf build
+mkdir build
 cd build
+cmake -S .. -B .
 cmake --build .
 cd ..
 

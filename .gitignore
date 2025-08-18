@@ -1,23 +1,11 @@
-spoofmeter_client
-spoofmeter_server
-spoofmeter_client.exe
-spoofmeter_server.exe
+# Everything temporary is now in one disposable subdirectory
+build
 
-spoofmeter_common.o
-spoofmeter_common.obj
-
-spoofmeter_client.o
-spoofmeter_server.o
-spoofmeter_client.obj
-spoofmeter_server.obj
-
-spoofmeter_client.ilk
-spoofmeter_server.ilk
-spoofmeter_client.pdb
-spoofmeter_server.pdb
-
-vc140.pdb
-
+# CI support
 .github
+
+# IDE support
 .vscode
+.vs
 .idea
+

@@ -11,23 +11,23 @@ project(SpoofMeter)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+add_library(spoofmeter_common_lib STATIC
+        spoofmeter_common.cpp
+        spoofmeter_common.h
+)
+
 add_executable(spoofmeter_client
-    spoofmeter_client.cpp
+        spoofmeter_client.cpp
 )
 
 add_executable(spoofmeter_server
-    spoofmeter_server.cpp
+        spoofmeter_server.cpp
 )
 
-add_library(spoofmeter_common STATIC
-    spoofmeter_common.cpp
-    spoofmeter_common.h
+target_link_libraries(spoofmeter_client PRIVATE
+        spoofmeter_common_lib
 )
 
-target_link_libraries(spoofmeter_client PUBLIC
-    spoofmeter_common
-)
-
-target_link_libraries(spoofmeter_server PUBLIC
-    spoofmeter_common
+target_link_libraries(spoofmeter_server PRIVATE
+        spoofmeter_common_lib
 )

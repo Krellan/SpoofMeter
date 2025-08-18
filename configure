@@ -1,6 +1,11 @@
 #!/bin/sh
 
-# This script is not necessary yet
+# SpoofMeter
+mkdir -p build
+cmake -S . -B build
+cd build
+cmake --build .
+cd ..
 
-echo "The SpoofMeter configure script has completed successfully."
+echo "The build of SpoofMeter has completed successfully!"
 exit 0

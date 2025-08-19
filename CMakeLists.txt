@@ -21,7 +21,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # https://clang.llvm.org/docs/JSONCompilationDatabase.html
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-if(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
+if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
         message(STATUS "Detected build type will be Debug")
 
         # Avoid future breakage by not also enabling this for release
@@ -43,7 +43,7 @@ if(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
         set (DEBUG_WIN_LD_FLAGS
                 "/DEBUG:FULL"
         )
-elseif(${CMAKE_BUILD_TYPE} STREQUAL "Release")
+elseif("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
         message(STATUS "Detected build type will be Release")
         
         set (DEBUG_GNU_CC_FLAGS

@@ -1,9 +1,6 @@
 # Everything temporary is now in one disposable subdirectory
 build
 
-# CI support
-.github
-
 # IDE support
 .vscode
 .vs

@@ -1,10 +1,3 @@
-#include "spoofmeter_common.h"
-
-// Additional headers needed on Linux
-#ifndef _WIN32
-	#include <grp.h>
-#endif
-
 // This is the SpoofMeter client.
 // It is designed to talk to a SpoofMeter server.
 
@@ -220,6 +213,24 @@
 // to aid in exactly reproducing a previous run, the random seed used will be printed out
 // and that random seed will be used to set the 8-byte session ID that we will be using
 // as well as all other randomness decisions we will be making
+
+
+#include "spoofmeter_common.h"
+
+#include "socket_helper.h"
+
+#include <cstdio>
+#include <cstring>
+
+// Additional headers needed on Linux
+#ifndef _WIN32
+	#include <unistd.h>
+	#include <grp.h>
+	#include <arpa/inet.h>
+	#include <netinet/in.h>
+	#include <netinet/ip.h>
+	#include <netinet/ip6.h>
+#endif
 
 
 static socket_t raw_ipv4_socket = (socket_t)-1;

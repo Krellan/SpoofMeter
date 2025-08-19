@@ -1,5 +1,3 @@
-#include "spoofmeter_common.h"
-
 // This is the SpoofMeter server.
 // It is designed to be talked to by a SpoofMeter client.
 
@@ -74,6 +72,23 @@
 // we still have a way to block our event loop, and avoid bug of 100% CPU upon zero connections.
 
 // all sockets need to be made nonblocking, including newly spawned sockets from accept()
+
+
+#include "spoofmeter_common.h"
+
+#include "socket_helper.h"
+
+#include <cstdio>
+#include <cstring>
+
+// Additional headers needed on Linux
+#ifndef _WIN32
+	#include <unistd.h>
+	#include <arpa/inet.h>
+	#include <netinet/in.h>
+	#include <netinet/ip.h>
+	#include <netinet/ip6.h>
+#endif
 
 static socket_t udp_ipv4_socket = (socket_t)-1;
 static socket_t udp_ipv6_socket = (socket_t)-1;

@@ -21,21 +21,14 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # https://clang.llvm.org/docs/JSONCompilationDatabase.html
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# TODO: Change default to OFF here when reasonably complete
-option(OPTION_DEBUG
-        "Build mode, ON for debug, OFF for release"
-        ON
-)
-
-if(OPTION_DEBUG)
-        message(STATUS "Detected option to build in Debug mode")
-
-        set(CMAKE_BUILD_TYPE Debug)
+if(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
+        message(STATUS "Detected build type will be Debug")
 
         # Avoid future breakage by not also enabling this for release
         # https://stackoverflow.com/questions/73215417/treat-compiler-warnings-as-errors
         set(CMAKE_COMPILE_WARNING_AS_ERROR ON)
 
+        # TODO: would be nice to support split debugging on Linux
         set (DEBUG_GNU_CC_FLAGS
                 "-Og"
                 "-ggdb"
@@ -50,11 +43,9 @@ if(OPTION_DEBUG)
         set (DEBUG_WIN_LD_FLAGS
                 "/DEBUG:FULL"
         )
-else()
-        message(STATUS "Detected option to build in Release mode")
+elseif(${CMAKE_BUILD_TYPE} STREQUAL "Release")
+        message(STATUS "Detected build type will be Release")
         
-        set(CMAKE_BUILD_TYPE Release)
-
         set (DEBUG_GNU_CC_FLAGS
                 "-O3"
         )
@@ -67,11 +58,13 @@ else()
         )
         set (DEBUG_WIN_LD_FLAGS
         )
+else()
+        message(STATUS "Detected CMAKE_BUILD_TYPE unsupported setting!")
 endif()
 
-# TODO: also support the Mac
+# TODO: also test on the Mac and see what its native compiler needs
 if (MSVC)
-        message(STATUS "Detected the Windows toolchain")
+        message(STATUS "Detected building with the Windows toolchain")
         
         set(DEBUG_CC_FLAGS ${DEBUG_WIN_CC_FLAGS})
         set(DEBUG_LD_FLAGS ${DEBUG_WIN_LD_FLAGS})
@@ -91,7 +84,7 @@ if (MSVC)
                 "iphlpapi.lib"
         )
 else()
-        message(STATUS "Detected the GNU toolchain")
+        message(STATUS "Detected building with the GNU toolchain")
         
         set(DEBUG_CC_FLAGS ${DEBUG_GNU_CC_FLAGS})
         set(DEBUG_LD_FLAGS ${DEBUG_GNU_LD_FLAGS})

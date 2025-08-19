@@ -1,9 +1,5 @@
 # SpoofMeter
 
-# TODO: finish porting, from classic makefiles to CMake
-# TODO: add DEBUG option, to influence the flags
-# TODO: test on Windows also, make sure it also builds there
-
 # Matches Ubuntu 24 as seen within WSL in Windows 11
 # https://cliutils.gitlab.io/modern-cmake/chapters/intro/dodonot.html
 cmake_minimum_required(VERSION 3.28)
@@ -127,6 +123,10 @@ set(EXTRA_LD_FLAGS
 add_library(spoofmeter_common_lib STATIC
         spoofmeter_common.cpp
         spoofmeter_common.h
+        socket_helper.cpp
+        socket_helper.h
+        packet_builder.cpp
+        packet_builder.h
 )
 
 target_compile_options(spoofmeter_common_lib PRIVATE
@@ -142,11 +142,15 @@ target_link_libraries(spoofmeter_common_lib PRIVATE
 add_executable(spoofmeter_client
         spoofmeter_client.cpp
         spoofmeter_common.h
+        socket_helper.h
+        packet_builder.h
 )
 
 add_executable(spoofmeter_server
         spoofmeter_server.cpp
         spoofmeter_common.h
+        socket_helper.h
+        packet_builder.h
 )
 
 target_compile_options(spoofmeter_client PRIVATE

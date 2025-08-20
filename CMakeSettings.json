@@ -1,22 +1,16 @@
 ﻿{
   "configurations": [
     {
-      "buildCommandArgs": "",
       "buildRoot": "${projectDir}\\out\\build\\${name}",
-      "cmakeCommandArgs": "-DOPTION_DEBUG=ON",
       "configurationType": "Debug",
-      "ctestCommandArgs": "",
       "generator": "Visual Studio 17 2022 Win64",
       "inheritEnvironments": [ "msvc_x64_x64" ],
       "installRoot": "${projectDir}\\out\\install\\${name}",
       "name": "x64-Debug"
     },
     {
-      "buildCommandArgs": "",
       "buildRoot": "${projectDir}\\out\\build\\${name}",
-      "cmakeCommandArgs": "-DOPTION_DEBUG=OFF",
       "configurationType": "RelWithDebInfo",
-      "ctestCommandArgs": "",
       "generator": "Visual Studio 17 2022 Win64",
       "inheritEnvironments": [ "msvc_x64_x64" ],
       "installRoot": "${projectDir}\\out\\install\\${name}",

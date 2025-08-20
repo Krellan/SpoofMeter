@@ -43,7 +43,8 @@ if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
         set (DEBUG_WIN_LD_FLAGS
                 "/DEBUG:FULL"
         )
-elseif("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
+elseif(("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
+    OR ("${CMAKE_BUILD_TYPE}" STREQUAL "RelWithDebInfo"))
         message(STATUS "Detected build type will be Release")
         
         set (DEBUG_GNU_CC_FLAGS
@@ -58,8 +59,10 @@ elseif("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
         )
         set (DEBUG_WIN_LD_FLAGS
         )
+elseif("${CMAKE_BUILD_TYPE}" STREQUAL "")
+        message(STATUS "Detected CMAKE_BUILD_TYPE not set! Please set it to Debug or Release!")
 else()
-        message(STATUS "Detected CMAKE_BUILD_TYPE unsupported setting!")
+        message(STATUS "Detected CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE} unsupported setting!")
 endif()
 
 # TODO: also test on the Mac and see what its native compiler needs

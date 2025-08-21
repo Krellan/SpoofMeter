@@ -36,6 +36,11 @@ if((NOT DEFINED CMAKE_BUILD_TYPE) OR ("${CMAKE_BUILD_TYPE}" STREQUAL ""))
     endif()
 endif()
 
+# Default to Debug if still nothing was specified
+if((NOT DEFINED CMAKE_BUILD_TYPE) OR ("${CMAKE_BUILD_TYPE}" STREQUAL ""))
+        set(CMAKE_BUILD_TYPE "Debug")
+endif()
+
 if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
         message(STATUS "Detected build type will be Debug")
 
@@ -74,8 +79,6 @@ elseif(("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
         )
         set (DEBUG_WIN_LD_FLAGS
         )
-elseif((NOT DEFINED CMAKE_BUILD_TYPE) OR ("${CMAKE_BUILD_TYPE}" STREQUAL ""))
-        message(STATUS "Detected CMAKE_BUILD_TYPE not set! Please set it to Debug or Release!")
 else()
         message(STATUS "Detected CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE} unsupported setting!")
 endif()
@@ -157,13 +160,6 @@ add_executable(spoofmeter_client
         packet_builder.h
 )
 
-add_executable(spoofmeter_server
-        spoofmeter_server.cpp
-        spoofmeter_common.h
-        socket_helper.h
-        packet_builder.h
-)
-
 target_compile_options(spoofmeter_client PRIVATE
         ${EXTRA_CC_FLAGS}
 )
@@ -173,6 +169,13 @@ target_link_options(spoofmeter_client PRIVATE
 target_link_libraries(spoofmeter_client PRIVATE
         ${EXTRA_LINK_LIBRARIES}
         spoofmeter_common_lib
+)
+
+add_executable(spoofmeter_server
+        spoofmeter_server.cpp
+        spoofmeter_common.h
+        socket_helper.h
+        packet_builder.h
 )
 
 target_compile_options(spoofmeter_server PRIVATE

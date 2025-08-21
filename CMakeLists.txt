@@ -64,7 +64,8 @@ if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
                 "/DEBUG:FULL"
         )
 elseif(("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
-    OR ("${CMAKE_BUILD_TYPE}" STREQUAL "RelWithDebInfo"))
+    OR ("${CMAKE_BUILD_TYPE}" STREQUAL "RelWithDebInfo")
+    OR ("${CMAKE_BUILD_TYPE}" STREQUAL "MinSizeRel"))
         message(STATUS "Detected build type will be Release")
         
         set (DEBUG_GNU_CC_FLAGS

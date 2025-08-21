@@ -21,6 +21,21 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # https://clang.llvm.org/docs/JSONCompilationDatabase.html
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+message(STATUS "Your CMAKE_CONFIGURATION_TYPES: ${CMAKE_CONFIGURATION_TYPES}")
+message(STATUS "Your CMAKE_BUILD_TYPE (one of): ${CMAKE_BUILD_TYPE}")
+
+# Visual Studio sets a different variable instead of CMAKE_BUILD_TYPE
+# It sets CMAKE_CONFIGURATION_TYPES but with only one entry in this list
+# So, take the first configuration and use that as the build type
+if((NOT DEFINED CMAKE_BUILD_TYPE) OR ("${CMAKE_BUILD_TYPE}" STREQUAL ""))
+    # Must test defined first to avoid empty string comparison gotcha
+    if((DEFINED CMAKE_CONFIGURATION_TYPES) AND (NOT "${CMAKE_CONFIGURATION_TYPES}" STREQUAL ""))
+        # Take first entry from list and use it as a string
+        list(GET CMAKE_CONFIGURATION_TYPES 0 FIRST_ENTRY)
+        set(CMAKE_BUILD_TYPE "${FIRST_ENTRY}")
+    endif()
+endif()
+
 if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
         message(STATUS "Detected build type will be Debug")
 
@@ -59,7 +74,7 @@ elseif(("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
         )
         set (DEBUG_WIN_LD_FLAGS
         )
-elseif("${CMAKE_BUILD_TYPE}" STREQUAL "")
+elseif((NOT DEFINED CMAKE_BUILD_TYPE) OR ("${CMAKE_BUILD_TYPE}" STREQUAL ""))
         message(STATUS "Detected CMAKE_BUILD_TYPE not set! Please set it to Debug or Release!")
 else()
         message(STATUS "Detected CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE} unsupported setting!")

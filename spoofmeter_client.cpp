@@ -241,6 +241,11 @@ static socket_t udp_ipv6_socket = (socket_t)-1;
 
 static socket_t tcp_socket = (socket_t)-1;
 
+// TODO: these are just for testing
+// in real life we will only be using one, selected from lookup, taken from command line
+static socket_t tcp_ipv4_socket = (socket_t)-1;
+static socket_t tcp_ipv6_socket = (socket_t)-1;
+
 // TODO: global options structure
 
 // TODO: globals structure, instead of individual declarations everywhere
@@ -249,6 +254,8 @@ static socket_t tcp_socket = (socket_t)-1;
 
 void close_sockets() {
 	socket_close_ptr(&tcp_socket);
+	socket_close_ptr(&tcp_ipv4_socket);
+	socket_close_ptr(&tcp_ipv6_socket);
 	socket_close_ptr(&udp_ipv4_socket);
 	socket_close_ptr(&udp_ipv6_socket);
 	socket_close_ptr(&raw_ipv4_socket);
@@ -459,6 +466,181 @@ socket_t open_raw_socket(sa_family_t family, int interface_index) {
 	return sock;
 }
 
+// Only the address portion of the remote_addr sockaddr is used
+// ### this code is very redundant with open_udp_socket()
+// only the connect() call, what's after it needs to diverge
+// because connect() will return EAGAIN/EWOULDBLOCK/Ewhatever given we are non-blocking
+// ### error out if somehow the UDP and TCP got at a different ifindex, make this comparison in the caller
+socket_t open_tcp_socket(
+	sa_family_t family,
+	uint16_t local_port,
+	uint16_t remote_port,
+	const struct sockaddr *remote_addr,
+	/*OUT*/ struct sockaddr_storage *out_local_addr,
+	/*OUT*/ int *out_ifindex
+) {
+	socket_t sock;
+
+	// Initialize output parameters
+	memset(out_local_addr, 0, sizeof(*out_local_addr));
+	*out_ifindex = -1;
+
+	// ### this should be the only divergence point between TCP and UDP initially here
+	sock = socket(family, SOCK_STREAM, IPPROTO_TCP);
+	if (sock == (socket_t)-1) {
+		socket_error("Failed to create UDP socket");
+		return (socket_t)-1;
+	}
+
+	if (!socket_become_nonblocking(sock)) {
+		socket_close(sock);
+		return (socket_t)-1;
+	}
+
+	if (!socket_become_reusable(sock)) {
+		socket_close(sock);
+		return (socket_t)-1;
+	}
+
+	if (family == AF_INET6) {
+		if (!socket_become_v6only(sock)) {
+			socket_close(sock);
+			return (socket_t)-1;
+		}
+	}
+
+	struct sockaddr *local_ptr = NULL;
+	struct sockaddr_in local_ipv4;
+	struct sockaddr_in6 local_ipv6;
+	socklen_t local_len;
+
+	// Local sockaddr is to the local port on any interface
+	if (family == AF_INET) {
+		memset(&local_ipv4, 0, sizeof(local_ipv4));
+
+		local_ipv4.sin_family = AF_INET;
+		local_ipv4.sin_port = htons(local_port);
+		local_ipv4.sin_addr.s_addr = INADDR_ANY;
+
+		local_ptr = (struct sockaddr *)&local_ipv4;
+		local_len = sizeof(local_ipv4);
+	}
+	else if (family == AF_INET6) {
+		memset(&local_ipv6, 0, sizeof(local_ipv6));
+
+		local_ipv6.sin6_family = AF_INET6;
+		local_ipv6.sin6_port = htons(local_port);
+		local_ipv6.sin6_addr = in6addr_any;
+
+		local_ptr = (struct sockaddr *)&local_ipv6;
+		local_len = sizeof(local_ipv6);
+	}
+	else {
+		fprintf(stderr, "Unsupported address family: %d\n", (int)family);
+		socket_close(sock);
+		return (socket_t)-1;
+	}
+
+	// ### cosmetic divergence only TCP/UDP
+	// Bind the UDP socket to the local port number on all interfaces
+	if (bind(sock, local_ptr, local_len) != 0) {
+		socket_error("Failed to bind TCP socket");
+		socket_close(sock);
+		return (socket_t)-1;
+	}
+
+	printf("TCP unbound local address: %s\n", sockaddr_to_string(local_ptr).c_str());
+
+	struct sockaddr *remote_ptr = NULL;
+	struct sockaddr_in remote_ipv4;
+	struct sockaddr_in6 remote_ipv6;
+	socklen_t remote_len;
+
+	// Remote sockaddr is to only the given remote address and remote port
+	if (family == AF_INET) {
+		memset(&remote_ipv4, 0, sizeof(remote_ipv4));
+		struct sockaddr_in *cast_ipv4 = (struct sockaddr_in *)remote_addr;
+
+		remote_ipv4.sin_family = AF_INET;
+		remote_ipv4.sin_port = htons(remote_port);
+		memcpy(&remote_ipv4.sin_addr, &cast_ipv4->sin_addr, sizeof(remote_ipv4.sin_addr));
+
+		remote_ptr = (struct sockaddr *)&remote_ipv4;
+		remote_len = sizeof(remote_ipv4);
+	}
+	else if (family == AF_INET6) {
+		memset(&remote_ipv6, 0, sizeof(remote_ipv6));
+		struct sockaddr_in6 *cast_ipv6 = (struct sockaddr_in6 *)remote_addr;
+
+		remote_ipv6.sin6_family = AF_INET6;
+		remote_ipv6.sin6_port = htons(remote_port);
+		memcpy(&remote_ipv6.sin6_addr, &cast_ipv6->sin6_addr, sizeof(remote_ipv6.sin6_addr));
+
+		remote_ptr = (struct sockaddr *)&remote_ipv6;
+		remote_len = sizeof(remote_ipv6);
+	}
+	else {
+		fprintf(stderr, "Unsupported address family: %d\n", (int)family);
+		socket_close(sock);
+		return (socket_t)-1;
+	}
+
+	// Connect the UDP socket, which sends nothing on the network,
+	// but causes the kernel to look up the route to the remote host.
+	// ### True divergence here: treat EAGAIN/EINTR/Ewhatever as OK
+	if (connect(sock, (struct sockaddr *)remote_ptr, remote_len) != 0) {
+		// Error 115 is OK, that means the connection is in progress
+		int err = errno;
+		// TODO: look up proper constant and avoid hardcoding this
+		if (err != 115) {
+			socket_error("Failed to connect TCP socket");
+			socket_close(sock);
+			return (socket_t)-1;
+		}
+	}
+
+	// ### TCP will not have this valid until connect() succeeds, most likely
+	// split this into a separate function that can be called separately
+	printf("TCP remote address: %s\n", sockaddr_to_string((struct sockaddr *)remote_ptr).c_str());
+
+	struct sockaddr_storage lookup_addr;
+	socklen_t lookup_len = sizeof(lookup_addr);
+
+	memset(&lookup_addr, 0, sizeof(lookup_addr));
+
+	// Get the local IP address the kernel selected for this route
+	if (getsockname(sock, (struct sockaddr *)&lookup_addr, &lookup_len) != 0) {
+		socket_error("Failed to get local socket name");
+		socket_close(sock);
+		return (socket_t)-1;
+	}
+	if (lookup_len != local_len) {
+		fprintf(stderr, "Unexpected socket name length: %d\n", (int)lookup_len);
+		socket_close(sock);
+		return (socket_t)-1;
+	}
+
+	printf("TCP bound local address: %s\n", sockaddr_to_string((struct sockaddr *)&lookup_addr).c_str());
+
+	std::string interface_name;
+	int interface_index = -1;
+
+	interface_name = sockaddr_to_interface_name((struct sockaddr *)&lookup_addr, &interface_index);
+	if (interface_index == -1) {
+		fprintf(stderr, "Failed to determine interface name for local IP!\n");
+		socket_close(sock);
+		return (socket_t)-1;
+	}
+
+	printf("TCP bound interface: %s (index %d)\n", interface_name.c_str(), interface_index);
+
+	// Populate out-parameters
+	memcpy(out_local_addr, &lookup_addr, sizeof(*out_local_addr));
+	*out_ifindex = interface_index;
+
+	return sock;
+}
+
 bool open_client_sockets() {
 	// Open raw sockets for IPv4 and IPv6
 	// Also open the UDP sockets at the same time
@@ -599,21 +781,54 @@ bool open_client_sockets() {
 	// initgroups()
 	// setuid()
 
-	return true;
-}
+	// ### call open_tcp_socket() here
+	// open two TCP connections for now, just to test
+	// one IPv4 and one IPv6
+	// this also provides us a neat way to test the multiplexer on the server side of things
+	// when done, we will only need to open one per client run
 
-bool open_tcp_socket() {
-	// TODO: Open TCP socket
-	// family, SOCK_STREAM, IPPROTO_TCP
-	tcp_socket = socket(AF_INET, SOCK_STREAM, 0);
-	if (tcp_socket == (socket_t)-1) {
-		perror("Failed to open TCP socket");
+	// ### temporary for testing here only
+	int ifindex_tcp_ipv4;
+	int ifindex_tcp_ipv6;
+
+	tcp_ipv4_socket = open_tcp_socket(AF_INET, local_port, remote_port, (struct sockaddr *)&target_ipv4, &local_ipv4_storage,&ifindex_tcp_ipv4);
+	if (tcp_ipv4_socket == (socket_t)-1) {
+		fprintf(stderr, "Failed to open TCP IPv4 socket!\n");
 		return false;
 	}
 
-	// also the usual setsockopt
-	// we want to also bind it first to the local port number
-	// then make the connect call, which will be nonblocking
+	tcp_ipv6_socket = open_tcp_socket(AF_INET6, local_port, remote_port, (struct sockaddr *)&target_ipv6, &local_ipv6_storage, &ifindex_tcp_ipv6);
+	if (tcp_ipv6_socket == (socket_t)-1) {
+		fprintf(stderr, "Failed to open TCP IPv6 socket!\n");
+		return false;
+	}
+
+	// Copy back the obtained local addresses
+	if (ifindex_tcp_ipv4 != -1) {
+		struct sockaddr_in *ipv4_ptr = (struct sockaddr_in *)&local_ipv4_storage;
+		char buffer[INET_ADDRSTRLEN + 1];
+		memcpy(&local_ipv4, &ipv4_ptr->sin_addr, sizeof(local_ipv4));
+		inet_ntop(AF_INET, &local_ipv4, buffer, INET_ADDRSTRLEN);
+		buffer[INET_ADDRSTRLEN] = '\0';
+		printf("Local address of IPv4 TCP: %s\n", buffer);
+	}
+	if (ifindex_tcp_ipv6 != -1) {
+		struct sockaddr_in6 *ipv6_ptr = (struct sockaddr_in6 *)&local_ipv6_storage;
+		char buffer[INET6_ADDRSTRLEN + 1];
+		memcpy(&local_ipv6, &ipv6_ptr->sin6_addr, sizeof(local_ipv6));
+		inet_ntop(AF_INET6, &local_ipv6, buffer, INET6_ADDRSTRLEN);
+		buffer[INET6_ADDRSTRLEN] = '\0';
+		printf("Local address of IPv6 TCP: %s\n", buffer);
+	}
+
+	// ### this should be an error and not a warning
+	if (ifindex_ipv4 != ifindex_tcp_ipv4) {
+		printf("Whoa, different ifindex for TCP versus UDP! IPv4 %d %d\n", ifindex_tcp_ipv4, ifindex_ipv4);
+	}
+	if (ifindex_ipv6 != ifindex_tcp_ipv6) {
+		printf("Whoa, different ifindex for TCP versus UDP! IPv6 %d %d\n", ifindex_tcp_ipv6, ifindex_ipv6);
+	}
+
 	return true;
 }
 
@@ -696,6 +911,24 @@ bool drop_privileges() {
 #endif
 }
 
+void await_tcp_connections(void) {
+	// success is indicated by sockets becoming writable
+	// not readable, because server might not have sent anything yet
+	// ### also check for errors
+	// perhaps use getsockopt SOL_SOCKET SO_ERROR to see if connect succeeded
+	// or just by demonstration reading our greeting block back
+
+	// ### we need to set TCP_NODELAY when opening TCP sockets
+	// and in the server when accepting them also, in addition to nonblocking and so on
+
+	// ### we should make a standard subroutine for setting socket options perhaps
+	// then both the client connect, and the server accept, paths could use these
+	// the server bind will also need to establish on these as well
+
+	// ### TODO timeout, take the timeout from the command line
+	// otherwise what is the point of the extra work to be non-blocking?
+}
+
 int main(int argc, char **argv) {
 	(void)argc;
 	(void)argv;
@@ -718,7 +951,12 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "Please run as an ordinary user, using sudo or similar wrapper.\n");
 		return 3;
 	}
-	
+
+	printf("SpoofMeter client all set up!\n");
+	printf("Attempting TCP connection....\n");
+
+	await_tcp_connections();
+
 	printf("SpoofMeter client hello world!\n");
 
 	close_sockets();
